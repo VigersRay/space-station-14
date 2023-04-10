@@ -1,6 +1,3 @@
-using System.Linq;
-using Content.Server.Access.Systems;
-using Content.Server.AlertLevel;
 using Content.Server.CartridgeLoader;
 using Content.Server.DeviceNetwork.Components;
 using Content.Server.Instruments;
@@ -15,12 +12,9 @@ using Content.Server.UserInterface;
 using Content.Shared.PDA;
 using Robust.Server.GameObjects;
 using Robust.Shared.Containers;
+using Robust.Shared.Map;
 using Content.Server.Mind.Components;
 using Content.Server.Traitor;
-using Content.Server.GameTicking;
-using Content.Shared.Access;
-using Content.Shared.Access.Systems;
-using Robust.Shared.Prototypes;
 
 namespace Content.Server.PDA
 {
@@ -33,9 +27,6 @@ namespace Content.Server.PDA
         [Dependency] private readonly StationSystem _stationSystem = default!;
         [Dependency] private readonly CartridgeLoaderSystem _cartridgeLoaderSystem = default!;
         [Dependency] private readonly StoreSystem _storeSystem = default!;
-        [Dependency] public readonly GameTicker GameTicker = default!;
-        [Dependency] private readonly AccessSystem _access = default!;
-        [Dependency] private readonly IPrototypeManager _prototypeManager = default!;
 
         public override void Initialize()
         {
@@ -45,6 +36,7 @@ namespace Content.Server.PDA
             SubscribeLocalEvent<PDAComponent, AfterActivatableUIOpenEvent>(AfterUIOpen);
             SubscribeLocalEvent<PDAComponent, StoreAddedEvent>(OnUplinkInit);
             SubscribeLocalEvent<PDAComponent, StoreRemovedEvent>(OnUplinkRemoved);
+            SubscribeLocalEvent<PDAComponent, GridModifiedEvent>(OnGridChanged);
         }
 
         protected override void OnComponentInit(EntityUid uid, PDAComponent pda, ComponentInit args)
@@ -94,6 +86,12 @@ namespace Content.Server.PDA
             UpdatePDAUserInterface(pda);
         }
 
+        private void OnGridChanged(EntityUid uid, PDAComponent pda, GridModifiedEvent args)
+        {
+            UpdateStationName(pda);
+            UpdatePDAUserInterface(pda);
+        }
+
         private void UpdatePDAUserInterface(PDAComponent pda)
         {
             var ownerInfo = new PDAIdInfoText
@@ -108,55 +106,7 @@ namespace Content.Server.PDA
 
             var address = GetDeviceNetAddress(pda.Owner);
             var hasInstrument = HasComp<InstrumentComponent>(pda.Owner);
-            TimeSpan currentTime;
-            currentTime = GameTicker.RoundDuration();
-
-            var stationTime = new StationTimeText
-            {
-                Hours = currentTime.Hours.ToString(),
-                Minutes = currentTime.Minutes.ToString(),
-            };
-
-            var stationUid = _stationSystem.GetOwningStation(pda.Owner);
-            if (TryComp(stationUid, out AlertLevelComponent? alertComp) &&
-                alertComp.AlertLevels != null)
-            {
-                pda.StationAlertLevel = alertComp.CurrentLevel;
-            }
-            else
-            {
-                pda.StationAlertLevel = null;
-            }
-
-            List<string> accessLevels;
-            if (pda.IdSlot.Item is { Valid: true } targetId)
-            {
-                var accessLevels_enum = _access.TryGetTags(targetId) ?? new List<string>();
-                accessLevels = accessLevels_enum.ToList();
-            }
-            else
-            {
-                accessLevels = new List<string>();
-            }
-
-            List<string> accessLevelsConvert = new List<string>();
-            accessLevels.RemoveAll(s => s.Contains("EmergencyShuttleRepealAll"));
-            foreach (var access in accessLevels)
-            {
-                if (!_prototypeManager.TryIndex<AccessLevelPrototype>(access, out var accessLevel))
-                {
-                    Logger.ErrorS(SharedIdCardConsoleSystem.Sawmill, $"Unable to find accesslevel for {access}");
-                    continue;
-                }
-
-                accessLevelsConvert.Add(GetAccessLevelName(accessLevel));
-            }
-
-            UpdateStationName(pda);
-
-            var state = new PDAUpdateState(pda.FlashlightOn, pda.PenSlot.HasItem, ownerInfo, accessLevelsConvert,
-                stationTime, pda.StationName, false, hasInstrument,
-                address, pda.StationAlertLevel);
+            var state = new PDAUpdateState(pda.FlashlightOn, pda.PenSlot.HasItem, ownerInfo, pda.StationName, false, hasInstrument, address);
 
             _cartridgeLoaderSystem?.UpdateUiState(pda.Owner, state);
 
@@ -167,9 +117,7 @@ namespace Content.Server.PDA
             if (!TryComp<StoreComponent>(pda.Owner, out var storeComponent))
                 return;
 
-            var uplinkState = new PDAUpdateState(pda.FlashlightOn, pda.PenSlot.HasItem, ownerInfo,
-                accessLevelsConvert, stationTime, pda.StationName, true, hasInstrument, address,
-                state.StationAlertLevel);
+            var uplinkState = new PDAUpdateState(pda.FlashlightOn, pda.PenSlot.HasItem, ownerInfo, pda.StationName, true, hasInstrument, address);
 
             foreach (var session in ui.SubscribedSessions)
             {
@@ -180,14 +128,6 @@ namespace Content.Server.PDA
                     mindcomp.Mind.HasRole<TraitorRole>()))
                     _cartridgeLoaderSystem?.UpdateUiState(pda.Owner, uplinkState, session);
             }
-        }
-
-        private static string GetAccessLevelName(AccessLevelPrototype prototype)
-        {
-            if (prototype.Name is { } name)
-                return name;
-
-            return prototype.ID;
         }
 
         private void OnUIMessage(PDAComponent pda, ServerBoundUserInterfaceMessage msg)
@@ -231,14 +171,7 @@ namespace Content.Server.PDA
         private void UpdateStationName(PDAComponent pda)
         {
             var station = _stationSystem.GetOwningStation(pda.Owner);
-            if (TryComp(station, out MetaDataComponent? metaData))
-            {
-                pda.StationName = metaData.EntityName;
-            }
-            else
-            {
-                pda.StationName = null;
-            }
+            pda.StationName = station is null ? null : Name(station.Value);
         }
 
         private void AfterUIOpen(EntityUid uid, PDAComponent pda, AfterActivatableUIOpenEvent args)
@@ -262,53 +195,7 @@ namespace Content.Server.PDA
                 JobTitle = pda.ContainedID?.JobTitle
             };
 
-            TimeSpan currentTime;
-            currentTime = GameTicker.RoundDuration();
-            var stationTime = new StationTimeText
-            {
-                Hours = currentTime.Hours.ToString(),
-                Minutes = currentTime.Minutes.ToString(),
-            };
-
-            var stationUid = _stationSystem.GetOwningStation(pda.Owner);
-            if (TryComp(stationUid, out AlertLevelComponent? alertComp) &&
-                alertComp.AlertLevels != null)
-            {
-                pda.StationAlertLevel = alertComp.CurrentLevel;
-            }
-            else
-            {
-                pda.StationAlertLevel = null;
-            }
-
-            List<string> accessLevels;
-            if (pda.IdSlot.Item is { Valid: true } targetId)
-            {
-                var accessLevels_enum = _access.TryGetTags(targetId) ?? new List<string>();
-                accessLevels = accessLevels_enum.ToList();
-            }
-            else
-            {
-                accessLevels = new List<string>();
-            }
-
-            List<string> accessLevelsConvert = new List<string>();
-            foreach (var access in accessLevels)
-            {
-                if (!_prototypeManager.TryIndex<AccessLevelPrototype>(access, out var accessLevel))
-                {
-                    Logger.ErrorS(SharedIdCardConsoleSystem.Sawmill, $"Unable to find accesslevel for {access}");
-                    continue;
-                }
-
-                accessLevelsConvert.Add(GetAccessLevelName(accessLevel));
-            }
-
-            UpdateStationName(pda);
-
-            var state = new PDAUpdateState(pda.FlashlightOn, pda.PenSlot.HasItem, ownerInfo, accessLevelsConvert,
-                stationTime, pda.StationName, true, HasComp<InstrumentComponent>(pda.Owner),
-                GetDeviceNetAddress(pda.Owner), pda.StationAlertLevel);
+            var state = new PDAUpdateState(pda.FlashlightOn, pda.PenSlot.HasItem, ownerInfo, pda.StationName, true, HasComp<InstrumentComponent>(pda.Owner), GetDeviceNetAddress(pda.Owner));
 
             _cartridgeLoaderSystem?.UpdateUiState(uid, state, args.Session);
         }

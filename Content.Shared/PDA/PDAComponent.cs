@@ -35,7 +35,5 @@ namespace Content.Shared.PDA
 
         [ViewVariables] public string? OwnerName;
         [ViewVariables] public string? StationName;
-        [ViewVariables] public string? StationAlertLevel;
-
     }
 }
