@@ -10,6 +10,7 @@ using Content.Shared.Speech;
 using Content.Shared.SurveillanceCamera;
 using Robust.Server.GameObjects;
 using Robust.Server.Player;
+using Robust.Shared.Map;
 using Robust.Shared.Prototypes;
 using Robust.Shared.Random;
 using Robust.Shared.Timing;
@@ -21,6 +22,7 @@ public sealed class SurveillanceCameraMonitorSystem : EntitySystem
     [Dependency] private readonly SurveillanceCameraSystem _surveillanceCameras = default!;
     [Dependency] private readonly UserInterfaceSystem _userInterface = default!;
     [Dependency] private readonly DeviceNetworkSystem _deviceNetworkSystem = default!;
+    [Dependency] private readonly SharedTransformSystem _transform = default!;
 
     public override void Initialize()
     {
@@ -129,7 +131,8 @@ public sealed class SurveillanceCameraMonitorSystem : EntitySystem
                 case SurveillanceCameraSystem.CameraDataMessage:
                     if (!args.Data.TryGetValue(SurveillanceCameraSystem.CameraNameData, out string? name)
                         || !args.Data.TryGetValue(SurveillanceCameraSystem.CameraSubnetData, out string? subnetData)
-                        || !args.Data.TryGetValue(SurveillanceCameraSystem.CameraAddressData, out string? address))
+                        || !args.Data.TryGetValue(SurveillanceCameraSystem.CameraAddressData, out string? address)
+                        || !args.Data.TryGetValue(SurveillanceCameraSystem.CameraUid, out string? camera))
                     {
                         return;
                     }
@@ -143,6 +146,37 @@ public sealed class SurveillanceCameraMonitorSystem : EntitySystem
                     {
                         component.KnownCameras.Add(address, name);
                     }
+
+                    if (!component.KnownCamerasCordinates.ContainsKey(address))
+                    {
+                        EntityCoordinates coordinates;
+                        EntityUid cameraUid;
+                        var xformQuery = GetEntityQuery<TransformComponent>();
+
+                        EntityUid.TryParse(camera, out cameraUid);
+
+                        if (TryComp<TransformComponent>(cameraUid, out var transform))
+                        {
+                            if (transform.GridUid != null)
+                            {
+                                coordinates = new EntityCoordinates(transform.GridUid.Value,
+                                    _transform.GetInvWorldMatrix(xformQuery.GetComponent(transform.GridUid.Value), xformQuery)
+                                        .Transform(_transform.GetWorldPosition(transform, xformQuery)));
+                            }
+                            else if (transform.MapUid != null)
+                            {
+                                coordinates = new EntityCoordinates(transform.MapUid.Value,
+                                    _transform.GetWorldPosition(transform, xformQuery));
+                            }
+                            else
+                            {
+                                coordinates = EntityCoordinates.Invalid;
+                            }
+
+                            component.KnownCamerasCordinates.Add(address, coordinates);
+                        }
+                    }
+
 
                     UpdateUserInterface(uid, component);
                     break;
@@ -169,6 +203,7 @@ public sealed class SurveillanceCameraMonitorSystem : EntitySystem
         SurveillanceCameraRefreshCamerasMessage message)
     {
         component.KnownCameras.Clear();
+        component.KnownCamerasCordinates.Clear();
         RequestActiveSubnetInfo(uid, component);
     }
 
@@ -293,6 +328,7 @@ public sealed class SurveillanceCameraMonitorSystem : EntitySystem
         DisconnectCamera(uid, true, monitor);
         monitor.ActiveSubnet = subnet;
         monitor.KnownCameras.Clear();
+        monitor.KnownCamerasCordinates.Clear();
         UpdateUserInterface(uid, monitor);
 
         ConnectToSubnet(uid, subnet);
@@ -495,7 +531,7 @@ public sealed class SurveillanceCameraMonitorSystem : EntitySystem
             session = actor.PlayerSession;
         }
 
-        var state = new SurveillanceCameraMonitorUiState(monitor.ActiveCamera, monitor.KnownSubnets.Keys.ToHashSet(), monitor.ActiveCameraAddress, monitor.ActiveSubnet, monitor.KnownCameras);
+        var state = new SurveillanceCameraMonitorUiState(monitor.ActiveCamera, monitor.KnownSubnets.Keys.ToHashSet(), monitor.ActiveCameraAddress, monitor.ActiveSubnet, monitor.KnownCameras, monitor.KnownCamerasCordinates);
         _userInterface.TrySetUiState(uid, SurveillanceCameraMonitorUiKey.Key, state);
     }
 }

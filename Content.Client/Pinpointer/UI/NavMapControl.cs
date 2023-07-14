@@ -1,8 +1,11 @@
 using System.Numerics;
+using System.Linq;
+using Content.Client.Resources;
 using Content.Client.Stylesheets;
 using Content.Client.UserInterface.Controls;
 using Content.Shared.Pinpointer;
 using Robust.Client.Graphics;
+using Robust.Client.ResourceManagement;
 using Robust.Client.UserInterface;
 using Robust.Client.UserInterface.Controls;
 using Robust.Shared.Input;
@@ -20,18 +23,37 @@ namespace Content.Client.Pinpointer.UI;
 public sealed class NavMapControl : MapGridControl
 {
     [Dependency] private readonly IEntityManager _entManager = default!;
+    [Dependency]  private readonly IResourceCache _resourceCache = default!;
 
     public EntityUid? MapUid;
 
+    public enum ShapeType
+    {
+        Circle,
+        Triangle
+    }
 
-    public Dictionary<EntityCoordinates, (bool Visible, Color Color)> TrackedCoordinates = new();
+    public class ShapeData
+    {
+        public Vector2 Position { get; set; }
+        public Color Color { get; set; }
+        public ShapeType Shape { get; set; }
+    }
 
-    private Vector2 _offset;
+    List<ShapeData> shapesToDraw = new List<ShapeData>();
+
+    public Dictionary<EntityCoordinates, (bool Visible, Color Color, ShapeType Shape)> TrackedCoordinates = new();
+
+    public Vector2 _offset;
     private bool _draggin;
+
+    private Font _font;
 
     private bool _recentering = false;
 
     private float _recenterMinimum = 0.05f;
+
+    private const float Epsilon = 5.0f; // Задайте погрешность округления по вашему усмотрению
 
     // TODO: https://github.com/space-wizards/RobustToolbox/issues/3818
     private readonly Label _zoom = new()
@@ -55,6 +77,8 @@ public sealed class NavMapControl : MapGridControl
         RectClipContent = true;
         HorizontalExpand = true;
         VerticalExpand = true;
+
+        _font = _resourceCache.GetFont("/Fonts/Boxfont-round/Boxfont Round.ttf", 10);
 
         var topPanel = new PanelContainer()
         {
@@ -108,10 +132,58 @@ public sealed class NavMapControl : MapGridControl
     {
         base.KeyBindDown(args);
 
+        Logger.Info($"click on the {args.RelativePixelPosition}");
         if (args.Function == EngineKeyFunctions.Use)
         {
-            _draggin = true;
+            var trackedPoint = FindPointByCoordinates(TrackedCoordinates, args.RelativePixelPosition);
+            if (trackedPoint != null)
+            {
+                Logger.Info($"find point {trackedPoint}");
+                CoordinateClicked?.Invoke(trackedPoint.Value);
+            }
+            else
+            {
+                _draggin = true;
+            }
         }
+    }
+
+    public event Action<EntityCoordinates>? CoordinateClicked;
+
+    private EntityCoordinates? FindPointByCoordinates(Dictionary<EntityCoordinates, (bool Visible, Color Color, ShapeType Shape)> trackedCoords, Vector2 coordinates)
+    {
+        if (!_entManager.TryGetComponent<TransformComponent>(MapUid, out var xform))
+        {
+            return null;
+        }
+
+        var offset = _offset;
+
+        if (_entManager.TryGetComponent<PhysicsComponent>(MapUid, out var physics))
+        {
+            offset += physics.LocalCenter;
+        }
+
+        foreach (var (coord, value) in trackedCoords)
+        {
+            var mapPos = coord.ToMap(_entManager);
+
+            if (mapPos.MapId != MapId.Nullspace)
+            {
+                var position = xform.InvWorldMatrix.Transform(mapPos.Position) - offset;
+                position = Scale(new Vector2(position.X, -position.Y));
+
+                Logger.Info($"Сравнение {position} с {coordinates}");
+
+                // Проверка приближенных координат с использованием погрешности округления
+                if (Math.Abs(position.X - coordinates.X) < Epsilon && Math.Abs(position.Y - coordinates.Y) < Epsilon)
+                {
+                    return coord;
+                }
+            }
+        }
+
+        return null;
     }
 
     protected override void KeyBindUp(GUIBoundKeyEventArgs args)
@@ -314,13 +386,9 @@ public sealed class NavMapControl : MapGridControl
             }
         }
 
-        var curTime = Timing.RealTime;
-        var blinkFrequency = 1f / 1f;
-        var lit = curTime.TotalSeconds % blinkFrequency > blinkFrequency / 2f;
-
-        foreach (var (coord, value) in TrackedCoordinates)
+        if (WorldRange <= 32f)
         {
-            if (lit && value.Visible)
+            foreach (var (value, coord) in navMap.WarpPoints)
             {
                 var mapPos = coord.ToMap(_entManager);
 
@@ -329,13 +397,64 @@ public sealed class NavMapControl : MapGridControl
                     var position = xform.InvWorldMatrix.Transform(mapPos.Position) - offset;
                     position = Scale(new Vector2(position.X, -position.Y));
 
-                    handle.DrawCircle(position, MinimapScale / 2f, value.Color);
+                    handle.DrawString(_font, position, value, Color.Yellow);
                 }
+            }
+        }
+
+        shapesToDraw.Clear();
+        var curTime = Timing.RealTime;
+        var blinkFrequency = 1f / 1f;
+        var pointsSize = MinimapScale / 2f;
+        var lit = curTime.TotalSeconds % blinkFrequency > blinkFrequency / 2f;
+
+        foreach (var (coord, value) in TrackedCoordinates)
+        {
+            if (!value.Visible)
+                continue;
+            var mapPos = coord.ToMap(_entManager);
+
+            if (mapPos.MapId == MapId.Nullspace)
+                continue;
+
+            var position = xform.InvWorldMatrix.Transform(mapPos.Position) - offset;
+            position = Scale(new Vector2(position.X, -position.Y));
+
+            var shapeData = new ShapeData
+            {
+                Position = position,
+                Color = value.Color,
+                Shape = value.Shape
+            };
+            shapesToDraw.Add(shapeData);
+        }
+
+        var halfSize = pointsSize;
+        var topVertex = new Vector2(0f, -halfSize);
+        var leftVertex = new Vector2(-halfSize, halfSize);
+        var rightVertex = new Vector2(halfSize, halfSize);
+        var triangleVertices = new[] { topVertex, leftVertex, rightVertex };
+
+        foreach (var shapeData in shapesToDraw)
+        {
+            if (!lit)
+                continue;
+            switch (shapeData.Shape)
+            {
+                case ShapeType.Circle:
+                    handle.DrawCircle(shapeData.Position, pointsSize, shapeData.Color);
+                    break;
+                case ShapeType.Triangle:
+                    var transformedVertices = triangleVertices.Select(v => v + shapeData.Position).ToArray();
+                    handle.DrawPrimitives(DrawPrimitiveTopology.TriangleList, transformedVertices, shapeData.Color);
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(shapeData.Shape), shapeData.Shape, "Invalid shape type.");
             }
         }
     }
 
-    private Vector2 Scale(Vector2 position)
+    public Vector2 Scale(Vector2 position)
     {
         return position * MinimapScale + MidpointVector;
     }

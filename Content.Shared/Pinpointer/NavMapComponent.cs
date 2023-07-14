@@ -1,4 +1,5 @@
 using Robust.Shared.GameStates;
+using Robust.Shared.Map;
 using Robust.Shared.Timing;
 
 namespace Content.Shared.Pinpointer;
@@ -11,6 +12,9 @@ public sealed class NavMapComponent : Component
 {
     [ViewVariables]
     public readonly Dictionary<Vector2i, NavMapChunk> Chunks = new();
+
+    [ViewVariables]
+    public readonly List<(string, EntityCoordinates)> WarpPoints = new();
 }
 
 public sealed class NavMapChunk

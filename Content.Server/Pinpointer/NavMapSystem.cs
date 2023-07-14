@@ -1,5 +1,6 @@
 using Content.Server.Station.Components;
 using Content.Server.Station.Systems;
+using Content.Server.Warps;
 using Content.Shared.Pinpointer;
 using Content.Shared.Tag;
 using Robust.Shared.GameStates;
@@ -32,6 +33,21 @@ public sealed class NavMapSystem : SharedNavMapSystem
         var physicsQuery = GetEntityQuery<PhysicsComponent>();
         var tagQuery = GetEntityQuery<TagComponent>();
         RefreshGrid(comp, Comp<MapGridComponent>(ev.GridId), physicsQuery, tagQuery);
+    }
+
+    private void RefreshWarpPoint(NavMapComponent component)
+    {
+        component.WarpPoints.Clear();
+
+        var warpPointQuery = EntityQueryEnumerator<WarpPointComponent>();
+
+        while (warpPointQuery.MoveNext(out var ent, out var comp))
+        {
+            if (TryComp<TransformComponent>(ent, out var transformComponent))
+            {
+                component.WarpPoints.Add((comp.Location, transformComponent.Coordinates)!);
+            }
+        }
     }
 
     private void OnNavMapSplit(EntityUid uid, NavMapComponent component, ref GridSplitEvent args)
@@ -77,10 +93,13 @@ public sealed class NavMapSystem : SharedNavMapSystem
             data.Add(index, chunk.TileData);
         }
 
+        RefreshWarpPoint(component);
+
         // TODO: Diffs
         args.State = new NavMapComponentState()
         {
             TileData = data,
+            WarpPointData = component.WarpPoints
         };
     }
 

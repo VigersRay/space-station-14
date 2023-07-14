@@ -1,3 +1,4 @@
+using Robust.Shared.Map;
 using Robust.Shared.Serialization;
 using Robust.Shared.Utility;
 
@@ -34,6 +35,7 @@ public abstract class SharedNavMapSystem : EntitySystem
     protected sealed class NavMapComponentState : ComponentState
     {
         public Dictionary<Vector2i, int> TileData = new();
+        public List<(string, EntityCoordinates)> WarpPointData = new();
     }
 
     [Serializable, NetSerializable]

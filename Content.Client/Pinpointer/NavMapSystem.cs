@@ -29,6 +29,13 @@ public sealed class NavMapSystem : SharedNavMapSystem
                 TileData = data,
             });
         }
+
+        component.WarpPoints.Clear();
+
+        foreach (var (origin, data) in state.WarpPointData)
+        {
+            component.WarpPoints.Add((origin, data));
+        }
     }
 }
 

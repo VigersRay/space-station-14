@@ -57,7 +57,7 @@ public sealed class SurveillanceCameraRouterSystem : EntitySystem
                     return;
                 }
 
-                ConnectCamera(uid, args.SenderAddress, address, router);
+                ConnectCamera(uid, args.SenderAddress, address, args.Sender, router);
                 break;
             case SurveillanceCameraSystem.CameraHeartbeatMessage:
                 if (!args.Data.TryGetValue(SurveillanceCameraSystem.CameraAddressData, out string? camera))
@@ -197,7 +197,7 @@ public sealed class SurveillanceCameraRouterSystem : EntitySystem
         _deviceNetworkSystem.QueuePacket(uid, origin, payload);
     }
 
-    private void ConnectCamera(EntityUid uid, string origin, string address, SurveillanceCameraRouterComponent? router = null)
+    private void ConnectCamera(EntityUid uid, string origin, string address, EntityUid cameraUid, SurveillanceCameraRouterComponent? router = null )
     {
         if (!Resolve(uid, ref router))
         {

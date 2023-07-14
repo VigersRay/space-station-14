@@ -1,5 +1,6 @@
 using System.Linq;
 using System.Numerics;
+using Content.Client.Pinpointer.UI;
 using Content.Client.Stylesheets;
 using Content.Client.UserInterface.Controls;
 using Content.Shared.Medical.SuitSensor;
@@ -116,15 +117,15 @@ namespace Content.Client.Medical.CrewMonitoring
                 if (sensor.Coordinates != null && NavMap.Visible)
                 {
                     NavMap.TrackedCoordinates.TryAdd(sensor.Coordinates.Value,
-                        (true, sensor.SuitSensorUid == _trackedButton?.SuitSensorUid ? StyleNano.PointGreen : StyleNano.PointRed));
+                        (true, sensor.SuitSensorUid == _trackedButton?.SuitSensorUid ? StyleNano.PointGreen : StyleNano.PointRed, NavMapControl.ShapeType.Circle));
 
                     nameButton.OnButtonUp += args =>
                     {
                         if (_trackedButton != null && _trackedButton?.Coordinates != null)
                             //Make previous point red
-                            NavMap.TrackedCoordinates[_trackedButton.Coordinates.Value] = (true, StyleNano.PointRed);
+                            NavMap.TrackedCoordinates[_trackedButton.Coordinates.Value] = (true, StyleNano.PointRed, NavMapControl.ShapeType.Circle);
 
-                        NavMap.TrackedCoordinates[sensor.Coordinates.Value] = (true, StyleNano.PointGreen);
+                        NavMap.TrackedCoordinates[sensor.Coordinates.Value] = (true, StyleNano.PointGreen, NavMapControl.ShapeType.Circle);
                         NavMap.CenterToCoordinates(sensor.Coordinates.Value);
 
                         nameButton.AddStyleClass(StyleNano.StyleClassButtonColorGreen);
@@ -140,7 +141,7 @@ namespace Content.Client.Medical.CrewMonitoring
             }
             // Show monitor point
             if (monitorCoords != null)
-                NavMap.TrackedCoordinates.Add(monitorCoords.Value, (true, StyleNano.PointMagenta));
+                NavMap.TrackedCoordinates.Add(monitorCoords.Value, (true, StyleNano.PointMagenta, NavMapControl.ShapeType.Circle));
         }
 
         private BoxContainer GetPositionBox(SuitSensorStatus sensor, Vector2 monitorCoordsInStationSpace, bool snap, float precision)

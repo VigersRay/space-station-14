@@ -45,6 +45,7 @@ public sealed class SurveillanceCameraSystem : EntitySystem
     public const string CameraSubnetDisconnectMessage = "surveillance_camera_subnet_disconnect";
 
     public const string CameraAddressData = "surveillance_camera_data_origin";
+    public const string CameraUid = "surveillance_camera_data_uid";
     public const string CameraNameData = "surveillance_camera_data_name";
     public const string CameraSubnetData = "surveillance_camera_data_subnet";
 
@@ -58,7 +59,7 @@ public sealed class SurveillanceCameraSystem : EntitySystem
         SubscribeLocalEvent<SurveillanceCameraComponent, SurveillanceCameraSetupSetName>(OnSetName);
         SubscribeLocalEvent<SurveillanceCameraComponent, SurveillanceCameraSetupSetNetwork>(OnSetNetwork);
         SubscribeLocalEvent<SurveillanceCameraComponent, GetVerbsEvent<AlternativeVerb>>(AddVerbs);
-        
+
         SubscribeLocalEvent<SurveillanceCameraComponent, EmpPulseEvent>(OnEmpPulse);
         SubscribeLocalEvent<SurveillanceCameraComponent, EmpDisabledRemoved>(OnEmpDisabledRemoved);
     }
@@ -82,7 +83,8 @@ public sealed class SurveillanceCameraSystem : EntitySystem
                 { DeviceNetworkConstants.Command, string.Empty },
                 { CameraAddressData, deviceNet.Address },
                 { CameraNameData, component.CameraId },
-                { CameraSubnetData, string.Empty }
+                { CameraSubnetData, string.Empty },
+                { CameraUid, uid.ToString() }
             };
 
             var dest = string.Empty;
@@ -115,6 +117,7 @@ public sealed class SurveillanceCameraSystem : EntitySystem
 
                     dest = args.SenderAddress;
                     payload[CameraSubnetData] = subnet;
+                    payload[CameraUid] = uid.ToString();
                     payload[DeviceNetworkConstants.Command] = CameraDataMessage;
                     break;
             }

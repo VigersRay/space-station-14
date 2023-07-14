@@ -1,3 +1,5 @@
+using Robust.Shared.Map;
+
 namespace Content.Server.SurveillanceCamera;
 
 [RegisterComponent]
@@ -37,6 +39,10 @@ public sealed class SurveillanceCameraMonitorComponent : Component
     // This is cleared when the subnet is changed.
     [ViewVariables]
     public Dictionary<string, string> KnownCameras { get; } = new();
+
+    // CamerasPostion by address and cordinates.
+    [ViewVariables]
+    public Dictionary<string, EntityCoordinates?> KnownCamerasCordinates { get; } = new();
 
     [ViewVariables]
     // The subnets known by this camera monitor.
