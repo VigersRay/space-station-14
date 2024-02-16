@@ -55,9 +55,9 @@ public sealed class SurveillanceCameraMonitorBoundUserInterface : BoundUserInter
         _window.CameraDisconnect += OnCameraDisconnect;
     }
 
-    private void OnCameraSelected(string address)
+    private void OnCameraSelected(string cameraAddress, string subnetAddress)
     {
-        SendMessage(new SurveillanceCameraMonitorSwitchMessage(address));
+        SendMessage(new SurveillanceCameraMonitorSwitchMessage(cameraAddress, subnetAddress));
     }
 
     private void OnSubnetRequest(string subnet)
@@ -96,11 +96,9 @@ public sealed class SurveillanceCameraMonitorBoundUserInterface : BoundUserInter
 
         _entManager.TryGetComponent<TransformComponent>(Owner, out var xform);
 
-        _window.ShowCameras(cast.CamerasCordinates, xform?.Coordinates);
-
         if (active == null)
         {
-            _window.UpdateState(null, cast.Subnets, cast.ActiveAddress, cast.ActiveSubnet, cast.Cameras);
+            _window.UpdateState(null, cast.ActiveAddress, cast.ActiveCamera);
 
             if (_currentCamera != null)
             {
@@ -125,9 +123,11 @@ public sealed class SurveillanceCameraMonitorBoundUserInterface : BoundUserInter
 
             if (EntMan.TryGetComponent<EyeComponent>(active, out var eye))
             {
-                _window.UpdateState(eye.Eye, cast.Subnets, cast.ActiveAddress, cast.ActiveSubnet, cast.Cameras);
+                _window.UpdateState(eye.Eye, cast.ActiveAddress, cast.ActiveCamera);
             }
         }
+
+        _window.ShowCameras(cast.Cameras, xform?.Coordinates);
     }
 
     protected override void Dispose(bool disposing)
