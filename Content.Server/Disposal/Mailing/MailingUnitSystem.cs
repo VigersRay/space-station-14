@@ -4,9 +4,11 @@ using Content.Server.DeviceNetwork.Components;
 using Content.Server.DeviceNetwork.Systems;
 using Content.Server.Disposal.Unit.EntitySystems;
 using Content.Server.Power.Components;
+using Content.Shared.DeviceNetwork;
 using Content.Shared.Disposal;
 using Content.Shared.Interaction;
 using Robust.Server.GameObjects;
+using Robust.Shared.Player;
 
 namespace Content.Server.Disposal.Mailing;
 
@@ -111,7 +113,7 @@ public sealed class MailingUnitSystem : EntitySystem
             [NetTarget] = component.Target
         };
 
-        _deviceNetworkSystem.QueuePacket(uid, null, payload, null, device);
+        _deviceNetworkSystem.QueuePacket(uid, null, payload, null, null, device);
     }
 
     /// <summary>
@@ -129,7 +131,7 @@ public sealed class MailingUnitSystem : EntitySystem
         };
 
         component.TargetList.Clear();
-        _deviceNetworkSystem.QueuePacket(uid, null, payload, null, device);
+        _deviceNetworkSystem.QueuePacket(uid, null, payload, null, null, device);
     }
 
     /// <summary>
@@ -177,7 +179,7 @@ public sealed class MailingUnitSystem : EntitySystem
 
         var state = new MailingUnitBoundUserInterfaceState(component.DisposalUnitInterfaceState, component.Target, component.TargetList, component.Tag);
         if (_userInterfaceSystem.TryGetUi(uid, MailingUnitUiKey.Key, out var bui))
-            UserInterfaceSystem.SetUiState(bui, state);
+            _userInterfaceSystem.SetUiState(bui, state);
     }
 
     private void OnTargetSelected(EntityUid uid, MailingUnitComponent component, TargetSelectedMessage args)

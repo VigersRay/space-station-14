@@ -3,10 +3,10 @@ using Robust.Shared.Serialization;
 
 namespace Content.Shared.Fluids;
 
-public class SharedDrainSystem : EntitySystem
+public abstract partial class SharedDrainSystem : EntitySystem
 {
     [Serializable, NetSerializable]
-    public sealed class DrainDoAfterEvent : SimpleDoAfterEvent
+    public sealed partial class DrainDoAfterEvent : SimpleDoAfterEvent
     {
     }
 }

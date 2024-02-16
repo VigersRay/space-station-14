@@ -18,10 +18,10 @@ namespace Content.Client.Atmos.Monitor.UI;
 public sealed partial class AirAlarmWindow : FancyWindow
 {
     public event Action<string, IAtmosDeviceData>? AtmosDeviceDataChanged;
+	public event Action<IAtmosDeviceData>? AtmosDeviceDataCopied;
     public event Action<string, AtmosMonitorThresholdType, AtmosAlarmThreshold, Gas?>? AtmosAlarmThresholdChanged;
     public event Action<AirAlarmMode>? AirAlarmModeChanged;
     public event Action<bool>? AutoModeChanged;
-    public event Action<string>? ResyncDeviceRequested;
     public event Action? ResyncAllRequested;
     public event Action<AirAlarmTab>? AirAlarmTabChange;
 
@@ -137,6 +137,7 @@ public sealed partial class AirAlarmWindow : FancyWindow
                 {
                     var control= new PumpControl(pump, addr);
                     control.PumpDataChanged += AtmosDeviceDataChanged!.Invoke;
+					control.PumpDataCopied += AtmosDeviceDataCopied!.Invoke;
                     _pumps.Add(addr, control);
                     CVentContainer.AddChild(control);
                 }
@@ -151,6 +152,7 @@ public sealed partial class AirAlarmWindow : FancyWindow
                 {
                     var control = new ScrubberControl(scrubber, addr);
                     control.ScrubberDataChanged += AtmosDeviceDataChanged!.Invoke;
+					control.ScrubberDataCopied += AtmosDeviceDataCopied!.Invoke;
                     _scrubbers.Add(addr, control);
                     CScrubberContainer.AddChild(control);
                 }

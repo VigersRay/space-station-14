@@ -1,6 +1,7 @@
 using Content.Shared.Administration.Logs;
 using Content.Shared.Database;
 using Content.Shared.DeviceLinking.Events;
+using Content.Shared.DeviceNetwork;
 using Content.Shared.Popups;
 using Robust.Shared.Prototypes;
 using Robust.Shared.Utility;
@@ -19,6 +20,7 @@ public abstract class SharedDeviceLinkSystem : EntitySystem
     /// <inheritdoc/>
     public override void Initialize()
     {
+        SubscribeLocalEvent<DeviceLinkSourceComponent, ComponentInit>(OnInit);
         SubscribeLocalEvent<DeviceLinkSourceComponent, ComponentStartup>(OnSourceStartup);
         SubscribeLocalEvent<DeviceLinkSinkComponent, ComponentStartup>(OnSinkStartup);
         SubscribeLocalEvent<DeviceLinkSourceComponent, ComponentRemove>(OnSourceRemoved);
@@ -27,6 +29,19 @@ public abstract class SharedDeviceLinkSystem : EntitySystem
     }
 
     #region Link Validation
+
+    private void OnInit(EntityUid uid, DeviceLinkSourceComponent component, ComponentInit args)
+    {
+        // Populate the output dictionary.
+        foreach (var (sinkUid, links) in component.LinkedPorts)
+        {
+            foreach (var link in links)
+            {
+                component.Outputs.GetOrNew(link.source).Add(sinkUid);
+            }
+        }
+    }
+
     /// <summary>
     /// Removes invalid links where the saved sink doesn't exist/have a sink component for example
     /// </summary>
@@ -35,7 +50,7 @@ public abstract class SharedDeviceLinkSystem : EntitySystem
         List<EntityUid> invalidSinks = new();
         foreach (var sinkUid  in sourceComponent.LinkedPorts.Keys)
         {
-            if (!TryComp<DeviceLinkSinkComponent?>(sinkUid, out var sinkComponent))
+            if (!TryComp<DeviceLinkSinkComponent>(sinkUid, out var sinkComponent))
             {
                 invalidSinks.Add(sinkUid);
                 foreach (var savedSinks in sourceComponent.Outputs.Values)
@@ -84,7 +99,7 @@ public abstract class SharedDeviceLinkSystem : EntitySystem
             List<(string, string)> invalidLinks = new();
             foreach (var link in linkedPorts)
             {
-                if (!sinkComponent.Ports.Contains(link.sink) || !(sourceComponent.Outputs.GetValueOrDefault(link.source)?.Contains(sinkUid) ?? false))
+                if (!sinkComponent.Ports.Contains(link.sink))
                     invalidLinks.Add(link);
             }
 
@@ -134,11 +149,15 @@ public abstract class SharedDeviceLinkSystem : EntitySystem
     /// </summary>
     public void EnsureSourcePorts(EntityUid uid, params string[] ports)
     {
+        if (ports.Length == 0)
+            return;
+
         var comp = EnsureComp<DeviceLinkSourceComponent>(uid);
-        comp.Ports ??= new HashSet<string>();
+        comp.Ports ??= new HashSet<ProtoId<SourcePortPrototype>>();
 
         foreach (var port in ports)
         {
+            DebugTools.Assert(_prototypeManager.HasIndex<SourcePortPrototype>(port));
             comp.Ports?.Add(port);
         }
     }
@@ -148,11 +167,15 @@ public abstract class SharedDeviceLinkSystem : EntitySystem
     /// </summary>
     public void EnsureSinkPorts(EntityUid uid, params string[] ports)
     {
+        if (ports.Length == 0)
+            return;
+
         var comp = EnsureComp<DeviceLinkSinkComponent>(uid);
         comp.Ports ??= new HashSet<string>();
 
         foreach (var port in ports)
         {
+            DebugTools.Assert(_prototypeManager.HasIndex<SinkPortPrototype>(port));
             comp.Ports?.Add(port);
         }
     }
@@ -210,10 +233,10 @@ public abstract class SharedDeviceLinkSystem : EntitySystem
     /// Returns the links of a source
     /// </summary>
     /// <returns>A list of sink and source port ids that are linked together</returns>
-    public HashSet<(string source, string sink)> GetLinks(EntityUid sourceUid, EntityUid sinkUid, DeviceLinkSourceComponent? sourceComponent = null)
+    public HashSet<(ProtoId<SourcePortPrototype> source, ProtoId<SinkPortPrototype> sink)> GetLinks(EntityUid sourceUid, EntityUid sinkUid, DeviceLinkSourceComponent? sourceComponent = null)
     {
         if (!Resolve(sourceUid, ref sourceComponent) || !sourceComponent.LinkedPorts.TryGetValue(sinkUid, out var links))
-            return new HashSet<(string source, string sink)>();
+            return new HashSet<(ProtoId<SourcePortPrototype>, ProtoId<SinkPortPrototype>)>();
 
         return links;
     }
@@ -307,6 +330,9 @@ public abstract class SharedDeviceLinkSystem : EntitySystem
         RemoveSinkFromSource(sourceUid, sinkUid, sourceComponent);
         foreach (var (source, sink) in links)
         {
+            DebugTools.Assert(_prototypeManager.HasIndex<SourcePortPrototype>(source));
+            DebugTools.Assert(_prototypeManager.HasIndex<SinkPortPrototype>(sink));
+
             if (!sourceComponent.Ports.Contains(source) || !sinkComponent.Ports.Contains(sink))
                 continue;
 
@@ -529,6 +555,22 @@ public abstract class SharedDeviceLinkSystem : EntitySystem
 
         _popupSystem.PopupCursor(Loc.GetString(locString, ("machine1", sourceUid), ("port1", PortName<SourcePortPrototype>(source)),
                 ("machine2", sinkUid), ("port2", PortName<SinkPortPrototype>(sink))), userId.Value, PopupType.Medium);
+    }
+    #endregion
+
+    #region Sending & Receiving
+    /// <summary>
+    /// Sends a network payload directed at the sink entity.
+    /// Just raises a <see cref="SignalReceivedEvent"/> without data if the source or the sink doesn't have a <see cref="DeviceNetworkComponent"/>
+    /// </summary>
+    /// <param name="uid">The source uid that invokes the port</param>
+    /// <param name="port">The port to invoke</param>
+    /// <param name="data">Optional data to send along</param>
+    /// <param name="sourceComponent"></param>
+    public virtual void InvokePort(EntityUid uid, string port, NetworkPayload? data = null,
+        DeviceLinkSourceComponent? sourceComponent = null)
+    {
+        // NOOP on client for the moment.
     }
     #endregion
 }

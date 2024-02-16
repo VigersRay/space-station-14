@@ -17,8 +17,6 @@
       map: ["enum.AmmoVisualLayers.Base"]
   - type: Appearance
   - type: SpentAmmoVisuals
-  - type: StaticPrice
-    price: 10
 
 - type: entity
   id: CartridgeMagnum
@@ -29,20 +27,19 @@
     proto: BulletMagnum
 
 - type: entity
-  id: CartridgeMagnumHighVelocity
-  name: cartridge (.45 magnum high-velocity)
-  parent: BaseCartridgeMagnum
-  components:
-  - type: CartridgeAmmo
-    proto: BulletMagnumHighVelocity
-
-- type: entity
   id: CartridgeMagnumPractice
   name: cartridge (.45 magnum practice)
   parent: BaseCartridgeMagnum
   components:
   - type: CartridgeAmmo
     proto: BulletMagnumPractice
+  - type: Sprite
+    layers:
+      - state: base
+        map: [ "enum.AmmoVisualLayers.Base" ]
+      - state: tip
+        map: [ "enum.AmmoVisualLayers.Tip" ]
+        color: "#dbdbdb"
 
 - type: entity
   id: CartridgeMagnumRubber
@@ -51,6 +48,13 @@
   components:
   - type: CartridgeAmmo
     proto: BulletMagnumRubber
+  - type: Sprite
+    layers:
+      - state: base
+        map: [ "enum.AmmoVisualLayers.Base" ]
+      - state: tip
+        map: [ "enum.AmmoVisualLayers.Tip" ]
+        color: "#43c4f7"
 
 - type: entity
   id: CartridgeMagnumIncendiary
@@ -59,76 +63,41 @@
   components:
   - type: CartridgeAmmo
     proto: BulletMagnumIncendiary
+  - type: Sprite
+    layers:
+      - state: base
+        map: [ "enum.AmmoVisualLayers.Base" ]
+      - state: tip
+        map: [ "enum.AmmoVisualLayers.Tip" ]
+        color: "#ff6e52"
 
 - type: entity
-  id: BaseAnomalousCartridge
+  id: CartridgeMagnumAP
+  name: cartridge (.45 magnum armor-piercing)
   parent: BaseCartridgeMagnum
-  description: Packs twice the punch of a standard A.P.E. particle.
-  abstract: true
   components:
+  - type: CartridgeAmmo
+    proto: BulletMagnumAP
   - type: Sprite
-    sprite: Objects/Weapons/Guns/Ammunition/Casings/anomalous_casing.rsi
     layers:
-    - state: base
-      map: ["enum.AmmoVisualLayers.Base"]
-  - type: Tag
-    tags:
-      - Cartridge
-      - CartridgeCHIMP
+      - state: base
+        map: [ "enum.AmmoVisualLayers.Base" ]
+      - state: tip
+        map: [ "enum.AmmoVisualLayers.Tip" ]
+        color: "#0a0a0a"
 
 - type: entity
-  id: CartridgeAnomalousParticleDelta
-  parent: BaseAnomalousCartridge
-  name: cartridge (delta particle)
+  id: CartridgeMagnumUranium
+  name: cartridge (.45 magnum uranium)
+  parent: BaseCartridgeMagnum
   components:
+  - type: CartridgeAmmo
+    proto: BulletMagnumUranium
   - type: Sprite
     layers:
-    - state: base
-      map: ["enum.AmmoVisualLayers.Base"]
-    - state: overlay
-      color: crimson
-  - type: CartridgeAmmo
-    proto: AnomalousParticleDeltaStrong
+      - state: base
+        map: [ "enum.AmmoVisualLayers.Base" ]
+      - state: tip
+        map: [ "enum.AmmoVisualLayers.Tip" ]
+        color: "#65fe08"
 
-- type: entity
-  id: CartridgeAnomalousParticleEpsilon
-  parent: BaseAnomalousCartridge
-  name: cartridge (epsilon particle)
-  components:
-  - type: Sprite
-    layers:
-    - state: base
-      map: ["enum.AmmoVisualLayers.Base"]
-    - state: overlay
-      color: plum
-  - type: CartridgeAmmo
-    proto: AnomalousParticleEpsilonStrong
-
-- type: entity
-  id: CartridgeAnomalousParticleZeta
-  parent: BaseAnomalousCartridge
-  name: cartridge (zeta particle)
-  components:
-  - type: Sprite
-    layers:
-    - state: base
-      map: ["enum.AmmoVisualLayers.Base"]
-    - state: overlay
-      color: goldenrod
-  - type: CartridgeAmmo
-    proto: AnomalousParticleZetaStrong
-
-- type: entity
-  id: CartridgeAnomalousParticleOmega
-  parent: BaseAnomalousCartridge
-  name: cartridge (omega particle)
-  description: An experimental and often dangerous particle.
-  components:
-  - type: Sprite
-    layers:
-    - state: base
-      map: ["enum.AmmoVisualLayers.Base"]
-    - state: overlay
-      color: green
-  - type: CartridgeAmmo
-    proto: AnomalousParticleOmegaStrong

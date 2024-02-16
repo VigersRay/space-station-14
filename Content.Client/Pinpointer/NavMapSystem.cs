@@ -4,6 +4,7 @@ using Robust.Client.Graphics;
 using Robust.Shared.Enums;
 using Robust.Shared.GameStates;
 using Robust.Shared.Map;
+using Robust.Shared.Map.Components;
 
 namespace Content.Client.Pinpointer;
 
@@ -30,6 +31,12 @@ public sealed class NavMapSystem : SharedNavMapSystem
             });
         }
 
+        component.Beacons.Clear();
+        component.Beacons.AddRange(state.Beacons);
+
+        component.Airlocks.Clear();
+        component.Airlocks.AddRange(state.Airlocks);
+
         component.WarpPoints.Clear();
 
         foreach (var (origin, data) in state.WarpPointData)
@@ -46,6 +53,8 @@ public sealed class NavMapOverlay : Overlay
 
     public override OverlaySpace Space => OverlaySpace.WorldSpace;
 
+    private List<Entity<MapGridComponent>> _grids = new();
+
     public NavMapOverlay(IEntityManager entManager, IMapManager mapManager)
     {
         _entManager = entManager;
@@ -58,9 +67,12 @@ public sealed class NavMapOverlay : Overlay
         var xformQuery = _entManager.GetEntityQuery<TransformComponent>();
         var scale = Matrix3.CreateScale(new Vector2(1f, 1f));
 
-        foreach (var grid in _mapManager.FindGridsIntersecting(args.MapId, args.WorldBounds))
+        _grids.Clear();
+        _mapManager.FindGridsIntersecting(args.MapId, args.WorldBounds, ref _grids);
+
+        foreach (var grid in _grids)
         {
-            if (!query.TryGetComponent(grid.Owner, out var navMap) || !xformQuery.TryGetComponent(grid.Owner, out var xform))
+            if (!query.TryGetComponent(grid, out var navMap) || !xformQuery.TryGetComponent(grid.Owner, out var xform))
                 continue;
 
             // TODO: Faster helper method
@@ -71,9 +83,9 @@ public sealed class NavMapOverlay : Overlay
 
             args.WorldHandle.SetTransform(matty);
 
-            for (var x = Math.Floor(localAABB.Left); x <= Math.Ceiling(localAABB.Right); x += SharedNavMapSystem.ChunkSize * grid.TileSize)
+            for (var x = Math.Floor(localAABB.Left); x <= Math.Ceiling(localAABB.Right); x += SharedNavMapSystem.ChunkSize * grid.Comp.TileSize)
             {
-                for (var y = Math.Floor(localAABB.Bottom); y <= Math.Ceiling(localAABB.Top); y += SharedNavMapSystem.ChunkSize * grid.TileSize)
+                for (var y = Math.Floor(localAABB.Bottom); y <= Math.Ceiling(localAABB.Top); y += SharedNavMapSystem.ChunkSize * grid.Comp.TileSize)
                 {
                     var floored = new Vector2i((int) x, (int) y);
 
@@ -93,7 +105,7 @@ public sealed class NavMapOverlay : Overlay
                             continue;
 
                         var tile = chunk.Origin * SharedNavMapSystem.ChunkSize + SharedNavMapSystem.GetTile(mask);
-                        args.WorldHandle.DrawRect(new Box2(tile * grid.TileSize, (tile + 1) * grid.TileSize), Color.Aqua, false);
+                        args.WorldHandle.DrawRect(new Box2(tile * grid.Comp.TileSize, (tile + 1) * grid.Comp.TileSize), Color.Aqua, false);
                     }
                 }
             }

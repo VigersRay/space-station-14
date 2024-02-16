@@ -2,24 +2,39 @@ using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Threading.Tasks;
 using Content.Server.GameTicking.Presets;
-using Content.Server.Ghost.Components;
+using Content.Server.Maps;
 using Content.Shared.CCVar;
 using Content.Shared.Damage;
 using Content.Shared.Damage.Prototypes;
 using Content.Shared.Database;
+using Content.Shared.FixedPoint;
+using Content.Shared.Ghost;
+using Content.Shared.Mind;
+using Content.Shared.Mobs;
 using Content.Shared.Mobs.Components;
+using Content.Shared.Mobs.Systems;
 using JetBrains.Annotations;
-using Robust.Server.Player;
+using Robust.Shared.Player;
 
 namespace Content.Server.GameTicking
 {
     public sealed partial class GameTicker
     {
+        [Dependency] private readonly MobThresholdSystem _mobThresholdSystem = default!;
+
         public const float PresetFailedCooldownIncrease = 30f;
 
+        /// <summary>
+        /// The selected preset that will be used at the start of the next round.
+        /// </summary>
         public GamePresetPrototype? Preset { get; private set; }
 
-        private bool StartPreset(IPlayerSession[] origReadyPlayers, bool force)
+        /// <summary>
+        /// The preset that's currently active.
+        /// </summary>
+        public GamePresetPrototype? CurrentPreset { get; private set; }
+
+        private bool StartPreset(ICommonSession[] origReadyPlayers, bool force)
         {
             var startAttempt = new RoundStartAttemptEvent(origReadyPlayers, force);
             RaiseLocalEvent(startAttempt);
@@ -27,7 +42,7 @@ namespace Content.Server.GameTicking
             if (!startAttempt.Cancelled)
                 return true;
 
-            var presetTitle = Preset != null ? Loc.GetString(Preset.ModeTitle) : string.Empty;
+            var presetTitle = CurrentPreset != null ? Loc.GetString(CurrentPreset.ModeTitle) : string.Empty;
 
             void FailedPresetRestart()
             {
@@ -92,6 +107,7 @@ namespace Content.Server.GameTicking
                 return;
 
             Preset = preset;
+            ValidateMap();
             UpdateInfoText();
 
             if (force)
@@ -131,12 +147,39 @@ namespace Content.Server.GameTicking
             return prototype != null;
         }
 
+        public bool IsMapEligible(GameMapPrototype map)
+        {
+            if (Preset == null)
+                return true;
+
+            if (Preset.MapPool == null || !_prototypeManager.TryIndex<GameMapPoolPrototype>(Preset.MapPool, out var pool))
+                return true;
+
+            return pool.Maps.Contains(map.ID);
+        }
+
+        private void ValidateMap()
+        {
+            if (Preset == null || _gameMapManager.GetSelectedMap() is not { } map)
+                return;
+
+            if (Preset.MapPool == null ||
+                !_prototypeManager.TryIndex<GameMapPoolPrototype>(Preset.MapPool, out var pool))
+                return;
+
+            if (pool.Maps.Contains(map.ID))
+                return;
+
+            _gameMapManager.SelectMapRandom();
+        }
+
         [PublicAPI]
         private bool AddGamePresetRules()
         {
             if (DummyTicker || Preset == null)
                 return false;
 
+            CurrentPreset = Preset;
             foreach (var rule in Preset.Rules)
             {
                 AddGameRule(rule);
@@ -145,7 +188,7 @@ namespace Content.Server.GameTicking
             return true;
         }
 
-        private void StartGamePresetRules()
+        public void StartGamePresetRules()
         {
             // May be touched by the preset during init.
             var rules = new List<EntityUid>(GetAddedGameRules());
@@ -155,8 +198,11 @@ namespace Content.Server.GameTicking
             }
         }
 
-        public bool OnGhostAttempt(Mind.Mind mind, bool canReturnGlobal, bool viaCommand = false)
+        public bool OnGhostAttempt(EntityUid mindId, bool canReturnGlobal, bool viaCommand = false, MindComponent? mind = null)
         {
+            if (!Resolve(mindId, ref mind))
+                return false;
+
             var playerEntity = mind.CurrentEntity;
 
             if (playerEntity != null && viaCommand)
@@ -185,7 +231,7 @@ namespace Content.Server.GameTicking
 
             if (mind.VisitingEntity != default)
             {
-                _mind.UnVisit(mind);
+                _mind.UnVisit(mindId, mind: mind);
             }
 
             var position = Exists(playerEntity)
@@ -213,7 +259,17 @@ namespace Content.Server.GameTicking
 
                     //todo: what if they dont breathe lol
                     //cry deeply
-                    DamageSpecifier damage = new(_prototypeManager.Index<DamageTypePrototype>("Asphyxiation"), 200);
+
+                    FixedPoint2 dealtDamage = 200;
+                    if (TryComp<DamageableComponent>(playerEntity, out var damageable)
+                        && TryComp<MobThresholdsComponent>(playerEntity, out var thresholds))
+                    {
+                        var playerDeadThreshold = _mobThresholdSystem.GetThresholdForState(playerEntity.Value, MobState.Dead, thresholds);
+                        dealtDamage = playerDeadThreshold - damageable.TotalDamage;
+                    }
+
+                    DamageSpecifier damage = new(_prototypeManager.Index<DamageTypePrototype>("Asphyxiation"), dealtDamage);
+
                     _damageable.TryChangeDamage(playerEntity, damage, true);
                 }
             }
@@ -221,33 +277,32 @@ namespace Content.Server.GameTicking
             var xformQuery = GetEntityQuery<TransformComponent>();
             var coords = _transform.GetMoverCoordinates(position, xformQuery);
 
-            var ghost = Spawn("MobObserver", coords);
+            var ghost = Spawn(ObserverPrototypeName, coords);
 
             // Try setting the ghost entity name to either the character name or the player name.
             // If all else fails, it'll default to the default entity prototype name, "observer".
             // However, that should rarely happen.
-            var meta = MetaData(ghost);
-            if(!string.IsNullOrWhiteSpace(mind.CharacterName))
-                meta.EntityName = mind.CharacterName;
+            if (!string.IsNullOrWhiteSpace(mind.CharacterName))
+                _metaData.SetEntityName(ghost, mind.CharacterName);
             else if (!string.IsNullOrWhiteSpace(mind.Session?.Name))
-                meta.EntityName = mind.Session.Name;
+                _metaData.SetEntityName(ghost, mind.Session.Name);
 
             var ghostComponent = Comp<GhostComponent>(ghost);
 
             if (mind.TimeOfDeath.HasValue)
             {
-                ghostComponent.TimeOfDeath = mind.TimeOfDeath!.Value;
+                _ghost.SetTimeOfDeath(ghost, mind.TimeOfDeath!.Value, ghostComponent);
             }
 
             if (playerEntity != null)
                 _adminLogger.Add(LogType.Mind, $"{EntityManager.ToPrettyString(playerEntity.Value):player} ghosted{(!canReturn ? " (non-returnable)" : "")}");
 
-            _ghosts.SetCanReturnToBody(ghostComponent, canReturn);
+            _ghost.SetCanReturnToBody(ghostComponent, canReturn);
 
             if (canReturn)
-                _mind.Visit(mind, ghost);
+                _mind.Visit(mindId, ghost, mind);
             else
-                _mind.TransferTo(mind, ghost);
+                _mind.TransferTo(mindId, ghost, mind: mind);
             return true;
         }
 
@@ -261,7 +316,7 @@ namespace Content.Server.GameTicking
             // This whole setup logic should be made asynchronous so we can properly wait on the DB AAAAAAAAAAAAAH
             var task = Task.Run(async () =>
             {
-                var server = await _db.AddOrGetServer(serverName);
+                var server = await _dbEntryManager.ServerEntity;
                 return await _db.AddNewRound(server, playerIds);
             });
 
@@ -272,11 +327,11 @@ namespace Content.Server.GameTicking
 
     public sealed class GhostAttemptHandleEvent : HandledEntityEventArgs
     {
-        public Mind.Mind Mind { get; }
+        public MindComponent Mind { get; }
         public bool CanReturnGlobal { get; }
         public bool Result { get; set; }
 
-        public GhostAttemptHandleEvent(Mind.Mind mind, bool canReturnGlobal)
+        public GhostAttemptHandleEvent(MindComponent mind, bool canReturnGlobal)
         {
             Mind = mind;
             CanReturnGlobal = canReturnGlobal;

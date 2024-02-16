@@ -13,14 +13,18 @@ public sealed class PinpointerSystem : SharedPinpointerSystem
     [Dependency] private readonly SharedTransformSystem _transform = default!;
     [Dependency] private readonly SharedAppearanceSystem _appearance = default!;
 
+    private EntityQuery<TransformComponent> _xformQuery;
+
     public override void Initialize()
     {
         base.Initialize();
+        _xformQuery = GetEntityQuery<TransformComponent>();
+
         SubscribeLocalEvent<PinpointerComponent, ActivateInWorldEvent>(OnActivate);
         SubscribeLocalEvent<FTLCompletedEvent>(OnLocateTarget);
     }
 
-    public bool TogglePinpointer(EntityUid uid, PinpointerComponent? pinpointer = null)
+    public override bool TogglePinpointer(EntityUid uid, PinpointerComponent? pinpointer = null)
     {
         if (!Resolve(uid, ref pinpointer))
             return false;
@@ -71,7 +75,7 @@ public sealed class PinpointerSystem : SharedPinpointerSystem
         {
             if (!EntityManager.ComponentFactory.TryGetRegistration(component.Component, out var reg))
             {
-                Logger.Error($"Unable to find component registration for {component.Component} for pinpointer!");
+                Log.Error($"Unable to find component registration for {component.Component} for pinpointer!");
                 DebugTools.Assert(false);
                 return;
             }
@@ -100,10 +104,7 @@ public sealed class PinpointerSystem : SharedPinpointerSystem
     /// </summary>
     private EntityUid? FindTargetFromComponent(EntityUid uid, Type whitelist, TransformComponent? transform = null)
     {
-        var xformQuery = GetEntityQuery<TransformComponent>();
-
-        if (transform == null)
-            xformQuery.TryGetComponent(uid, out transform);
+        _xformQuery.Resolve(uid, ref transform, false);
 
         if (transform == null)
             return null;
@@ -111,15 +112,15 @@ public sealed class PinpointerSystem : SharedPinpointerSystem
         // sort all entities in distance increasing order
         var mapId = transform.MapID;
         var l = new SortedList<float, EntityUid>();
-        var worldPos = _transform.GetWorldPosition(transform, xformQuery);
+        var worldPos = _transform.GetWorldPosition(transform);
 
-        foreach (var comp in EntityManager.GetAllComponents(whitelist))
+        foreach (var (otherUid, _) in EntityManager.GetAllComponents(whitelist))
         {
-            if (!xformQuery.TryGetComponent(comp.Owner, out var compXform) || compXform.MapID != mapId)
+            if (!_xformQuery.TryGetComponent(otherUid, out var compXform) || compXform.MapID != mapId)
                 continue;
 
-            var dist = (_transform.GetWorldPosition(compXform, xformQuery) - worldPos).LengthSquared();
-            l.TryAdd(dist, comp.Owner);
+            var dist = (_transform.GetWorldPosition(compXform) - worldPos).LengthSquared();
+            l.TryAdd(dist, otherUid);
         }
 
         // return uid with a smallest distance
@@ -127,26 +128,13 @@ public sealed class PinpointerSystem : SharedPinpointerSystem
     }
 
     /// <summary>
-    ///     Set pinpointers target to track
+    ///     Update direction from pinpointer to selected target (if it was set)
     /// </summary>
-    public void SetTarget(EntityUid uid, EntityUid? target, PinpointerComponent? pinpointer = null)
+    protected override void UpdateDirectionToTarget(EntityUid uid, PinpointerComponent? pinpointer = null)
     {
         if (!Resolve(uid, ref pinpointer))
             return;
 
-        if (pinpointer.Target == target)
-            return;
-
-        pinpointer.Target = target;
-        if (pinpointer.IsActive)
-            UpdateDirectionToTarget(uid, pinpointer);
-    }
-
-    /// <summary>
-    ///     Update direction from pinpointer to selected target (if it was set)
-    /// </summary>
-    private void UpdateDirectionToTarget(EntityUid uid, PinpointerComponent pinpointer)
-    {
         if (!pinpointer.IsActive)
             return;
 

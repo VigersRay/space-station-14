@@ -1,38 +1,51 @@
-- type: weightedRandom
+- type: weightedRandomFillSolution
   id: RandomFillStrangePill
-  weights:
-    # Elements
-    Aluminium: 1
-    Carbon: 1
-    Chlorine: 1
-    Copper: 1
-    Fluorine: 1
-    Hydrogen: 1
-    Iodine: 1
-    Lithium: 1
-    Mercury: 1
-    Potassium: 1
-    Phosphorus: 1
-    Radium: 1
-    Silicon: 1
-    Sulfur: 1
-    Sodium: 1
-    # Medicines
-    Ipecac: 3
-    Omnizine: 2
-    Tricordrazine: 3
-    # Narcotics
-    Desoxyephedrine: 3
-    Ephedrine: 3
-    SpaceDrugs: 5
-    Nocturine: 3
-    MuteToxin: 3
-    NorepinephricAcid: 3
-    # Toxins
-    ChloralHydrate: 3
-    Mold: 3
-    Pax: 3
-    Toxin: 5
+  fills:
+  - quantity: 20
+    weight: 1
+    reagents:
+    - Aluminium
+    - Carbon
+    - Chlorine
+    - Copper
+    - Fluorine
+    - Hydrogen
+    - Iodine
+    - Lithium
+    - Mercury
+    - Potassium
+    - Phosphorus
+    - Radium
+    - Silicon
+    - Sulfur
+    - Sodium
+  - quantity: 20
+    weight: 2
+    reagents:
+    - Omnizine
+  - quantity: 20
+    weight: 3
+    reagents:
+    - ChloralHydrate
+    - Desoxyephedrine
+    - Ephedrine
+    - Ipecac
+    - Mold
+    - MuteToxin
+    - Nocturine
+    - NorepinephricAcid
+    - Pax
+    - Tricordrazine
+    - SodiumPolyacrylate
+    - Fresium
+  - quantity: 20
+    weight: 5
+    reagents:
+    - SpaceDrugs
+  - quantity: 10
+    weight: 5
+    reagents:
+    - Amatoxin
 
 - type: entity
   name: strange pill
@@ -47,7 +60,6 @@
   - type: RandomFillSolution
     solution: food
     weightedRandomId: RandomFillStrangePill
-    quantity: 20
   - type: Sprite
     sprite: Objects/Specific/Chemistry/pills.rsi
     layers:
@@ -57,41 +69,22 @@
     available:
       - enum.DamageStateVisualLayers.Base:
           pill1: ""
-      - enum.DamageStateVisualLayers.Base:
           pill2: ""
-      - enum.DamageStateVisualLayers.Base:
           pill3: ""
-      - enum.DamageStateVisualLayers.Base:
           pill4: ""
-      - enum.DamageStateVisualLayers.Base:
           pill5: ""
-      - enum.DamageStateVisualLayers.Base:
           pill6: ""
-      - enum.DamageStateVisualLayers.Base:
           pill7: ""
-      - enum.DamageStateVisualLayers.Base:
           pill8: ""
-      - enum.DamageStateVisualLayers.Base:
           pill9: ""
-      - enum.DamageStateVisualLayers.Base:
           pill10: ""
-      - enum.DamageStateVisualLayers.Base:
           pill11: ""
-      - enum.DamageStateVisualLayers.Base:
           pill12: ""
-      - enum.DamageStateVisualLayers.Base:
           pill13: ""
-      - enum.DamageStateVisualLayers.Base:
           pill14: ""
-      - enum.DamageStateVisualLayers.Base:
           pill15: ""
-      - enum.DamageStateVisualLayers.Base:
           pill16: ""
-      - enum.DamageStateVisualLayers.Base:
           pill17: ""
-      - enum.DamageStateVisualLayers.Base:
           pill18: ""
-      - enum.DamageStateVisualLayers.Base:
           pill19: ""
-      - enum.DamageStateVisualLayers.Base:
           pill20: ""

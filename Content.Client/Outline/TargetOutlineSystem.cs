@@ -63,8 +63,12 @@ public sealed class TargetOutlineSystem : EntitySystem
 
     private Vector2 LookupVector => new(LookupSize, LookupSize);
 
+    [ValidatePrototypeId<ShaderPrototype>]
     private const string ShaderTargetValid = "SelectionOutlineInrange";
+
+    [ValidatePrototypeId<ShaderPrototype>]
     private const string ShaderTargetInvalid = "SelectionOutline";
+
     private ShaderInstance? _shaderTargetValid;
     private ShaderInstance? _shaderTargetInvalid;
 
@@ -110,7 +114,7 @@ public sealed class TargetOutlineSystem : EntitySystem
 
     private void HighlightTargets()
     {
-        if (_playerManager.LocalPlayer?.ControlledEntity is not { Valid: true } player)
+        if (_playerManager.LocalEntity is not { Valid: true } player)
             return;
 
         // remove current highlights
@@ -118,7 +122,7 @@ public sealed class TargetOutlineSystem : EntitySystem
 
         // find possible targets on screen
         // TODO: Duplicated in SpriteSystem and DragDropSystem. Should probably be cached somewhere for a frame?
-        var mousePos = _eyeManager.ScreenToMap(_inputManager.MouseScreenPosition).Position;
+        var mousePos = _eyeManager.PixelToMap(_inputManager.MouseScreenPosition).Position;
         var bounds = new Box2(mousePos - LookupVector, mousePos + LookupVector);
         var pvsEntities = _lookup.GetEntitiesIntersecting(_eyeManager.CurrentMap, bounds, LookupFlags.Approximate | LookupFlags.Static);
         var spriteQuery = GetEntityQuery<SpriteComponent>();

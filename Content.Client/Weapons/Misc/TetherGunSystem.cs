@@ -54,7 +54,7 @@ public sealed class TetherGunSystem : SharedTetherGunSystem
         if (!_timing.IsFirstTimePredicted)
             return;
 
-        var player = _player.LocalPlayer?.ControlledEntity;
+        var player = _player.LocalEntity;
 
         if (player == null ||
             !TryGetTetherGun(player.Value, out var gunUid, out var gun) ||
@@ -64,7 +64,7 @@ public sealed class TetherGunSystem : SharedTetherGunSystem
         }
 
         var mousePos = _input.MouseScreenPosition;
-        var mouseWorldPos = _eyeManager.ScreenToMap(mousePos);
+        var mouseWorldPos = _eyeManager.PixelToMap(mousePos);
 
         if (mouseWorldPos.MapId == MapId.Nullspace)
             return;
@@ -91,7 +91,7 @@ public sealed class TetherGunSystem : SharedTetherGunSystem
 
         RaisePredictiveEvent(new RequestTetherMoveEvent()
         {
-            Coordinates = coords
+            Coordinates = GetNetCoordinates(coords)
         });
     }
 

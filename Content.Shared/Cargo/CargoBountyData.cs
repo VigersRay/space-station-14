@@ -1,7 +1,6 @@
 using Robust.Shared.Serialization;
 using Content.Shared.Cargo.Prototypes;
-using Robust.Shared.Serialization.TypeSerializers.Implementations.Custom;
-using Robust.Shared.Serialization.TypeSerializers.Implementations.Custom.Prototype;
+using Robust.Shared.Prototypes;
 
 namespace Content.Shared.Cargo;
 
@@ -9,23 +8,24 @@ namespace Content.Shared.Cargo;
 /// A data structure for storing currently available bounties.
 /// </summary>
 [DataDefinition, NetSerializable, Serializable]
-public readonly record struct CargoBountyData(int Id, string Bounty, TimeSpan EndTime)
+public readonly partial record struct CargoBountyData
 {
     /// <summary>
-    /// A numeric id used to identify the bounty
+    /// A unique id used to identify the bounty
     /// </summary>
-    [DataField("id"), ViewVariables(VVAccess.ReadWrite)]
-    public readonly int Id = Id;
+    [DataField, ViewVariables(VVAccess.ReadWrite)]
+    public string Id { get; init; } = string.Empty;
 
     /// <summary>
     /// The prototype containing information about the bounty.
     /// </summary>
-    [DataField("bounty", customTypeSerializer: typeof(PrototypeIdSerializer<CargoBountyPrototype>)), ViewVariables(VVAccess.ReadWrite)]
-    public readonly string Bounty = Bounty;
+    [ViewVariables(VVAccess.ReadWrite)]
+    [DataField(required: true)]
+    public ProtoId<CargoBountyPrototype> Bounty { get; init; } = string.Empty;
 
-    /// <summary>
-    /// The time at which the bounty is closed and no longer is available.
-    /// </summary>
-    [DataField("endTime", customTypeSerializer: typeof(TimeOffsetSerializer))]
-    public readonly TimeSpan EndTime = EndTime;
+    public CargoBountyData(CargoBountyPrototype bounty, int uniqueIdentifier)
+    {
+        Bounty = bounty.ID;
+        Id = $"{bounty.IdPrefix}{uniqueIdentifier:D3}";
+    }
 }

@@ -1,6 +1,7 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using Content.Client.Guidebook.RichText;
+using Content.Client.UserInterface.ControlExtensions;
 using Content.Client.UserInterface.Controls;
 using Content.Client.UserInterface.Controls.FancyTree;
 using JetBrains.Annotations;
@@ -26,6 +27,11 @@ public sealed partial class GuidebookWindow : FancyWindow, ILinkClickHandler
         IoCManager.InjectDependencies(this);
 
         Tree.OnSelectedItemChanged += OnSelectionChanged;
+
+        SearchBar.OnTextChanged += _ =>
+        {
+            HandleFilter();
+        };
     }
 
     private void OnSelectionChanged(TreeItem? item)
@@ -40,6 +46,7 @@ public sealed partial class GuidebookWindow : FancyWindow, ILinkClickHandler
     {
         Placeholder.Visible = true;
         EntryContainer.Visible = false;
+        SearchContainer.Visible = false;
         EntryContainer.RemoveAllChildren();
     }
 
@@ -48,8 +55,11 @@ public sealed partial class GuidebookWindow : FancyWindow, ILinkClickHandler
         Scroll.SetScrollValue(default);
         Placeholder.Visible = false;
         EntryContainer.Visible = true;
+        SearchBar.Text = "";
         EntryContainer.RemoveAllChildren();
         using var file = _resourceManager.ContentFileReadText(entry.Text);
+
+        SearchContainer.Visible = entry.FilterEnabled;
 
         if (!_parsingMan.TryAddMarkup(EntryContainer, file.ReadToEnd()))
         {
@@ -88,22 +98,33 @@ public sealed partial class GuidebookWindow : FancyWindow, ILinkClickHandler
         }
     }
 
-    private IEnumerable<GuideEntry> GetSortedRootEntries(List<string>? rootEntries)
+    private IEnumerable<GuideEntry> GetSortedEntries(List<string>? rootEntries)
     {
         if (rootEntries == null)
         {
             HashSet<string> entries = new(_entries.Keys);
             foreach (var entry in _entries.Values)
             {
+                if (entry.Children.Count > 0)
+                {
+                    var sortedChildren = entry.Children
+                        .Select(childId => _entries[childId])
+                        .OrderBy(childEntry => childEntry.Priority)
+                        .ThenBy(childEntry => Loc.GetString(childEntry.Name))
+                        .Select(childEntry => childEntry.Id)
+                        .ToList();
+
+                    entry.Children = sortedChildren;
+                }
                 entries.ExceptWith(entry.Children);
             }
             rootEntries = entries.ToList();
         }
 
         return rootEntries
-            .Select(x => _entries[x])
-            .OrderBy(x => x.Priority)
-            .ThenBy(x => Loc.GetString(x.Name));
+            .Select(rootEntryId => _entries[rootEntryId])
+            .OrderBy(rootEntry => rootEntry.Priority)
+            .ThenBy(rootEntry => Loc.GetString(rootEntry.Name));
     }
 
     private void RepopulateTree(List<string>? roots = null, string? forcedRoot = null)
@@ -113,7 +134,7 @@ public sealed partial class GuidebookWindow : FancyWindow, ILinkClickHandler
         HashSet<string> addedEntries = new();
 
         TreeItem? parent = forcedRoot == null ? null : AddEntry(forcedRoot, null, addedEntries);
-        foreach (var entry in GetSortedRootEntries(roots))
+        foreach (var entry in GetSortedEntries(roots))
         {
             AddEntry(entry.Id, parent, addedEntries);
         }
@@ -158,5 +179,21 @@ public sealed partial class GuidebookWindow : FancyWindow, ILinkClickHandler
         {
             ShowGuide(entry);
         }
+    }
+
+    private void HandleFilter()
+    {
+        var emptySearch = SearchBar.Text.Trim().Length == 0;
+
+        if (Tree.SelectedItem != null && Tree.SelectedItem.Metadata is GuideEntry entry && entry.FilterEnabled)
+        {
+            var foundElements = EntryContainer.GetSearchableControls();
+
+            foreach (var element in foundElements)
+            {
+                element.SetHiddenState(true, SearchBar.Text.Trim());
+            }
+        }
+
     }
 }

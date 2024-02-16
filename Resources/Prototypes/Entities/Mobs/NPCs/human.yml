@@ -1,5 +1,5 @@
 - type: entity
-  name: Civilian
+  name: civilian
   parent: BaseMobHuman
   id: MobCivilian
   description: A miserable pile of secrets.
@@ -8,23 +8,44 @@
   - type: MobMover
   - type: Loadout
     prototypes: [PassengerGear]
-  - type: Faction
+  - type: NpcFactionMember
     factions:
     - NanoTrasen
 
 - type: entity
-  name: Spirate
+  name: salvager
+  parent: BaseMobHuman
+  id: MobSalvager
+  components:
+    - type: NpcFactionMember
+      factions:
+        - Syndicate
+    - type: Loadout
+      prototypes:
+        - SalvageSpecialistGear
+    - type: InputMover
+    - type: MobMover
+    - type: HTN
+      rootTask:
+        task: SimpleHumanoidHostileCompound
+
+- type: entity
+  name: spirate
   parent: BaseMobHuman
   id: MobSpirate
   description: Yarr!
   components:
-  - type: Faction
+  - type: NpcFactionMember
     factions:
       - Syndicate
+  - type: Loadout
+    prototypes:
+      - PirateGear
   - type: InputMover
   - type: MobMover
   - type: HTN
-    rootTask: RangedCombatCompound
+    rootTask:
+      task: SimpleHumanoidHostileCompound
 
 - type: entity
   parent: BaseMobHuman
@@ -53,3 +74,5 @@
   description: A polymorphed unfortunate.
   components:
   - type: Cluwne
+  - type: Speech
+    speechVerb: Cluwne

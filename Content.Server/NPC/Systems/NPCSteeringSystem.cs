@@ -1,4 +1,3 @@
-using System.Linq;
 using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
@@ -9,6 +8,7 @@ using Content.Server.NPC.Components;
 using Content.Server.NPC.Events;
 using Content.Server.NPC.Pathfinding;
 using Content.Shared.CCVar;
+using Content.Shared.Climbing.Systems;
 using Content.Shared.CombatMode;
 using Content.Shared.Interaction;
 using Content.Shared.Movement.Components;
@@ -17,18 +17,18 @@ using Content.Shared.NPC;
 using Content.Shared.NPC.Events;
 using Content.Shared.Physics;
 using Content.Shared.Weapons.Melee;
-using Robust.Server.Player;
 using Robust.Shared.Configuration;
 using Robust.Shared.Map;
 using Robust.Shared.Physics;
 using Robust.Shared.Physics.Components;
 using Robust.Shared.Physics.Systems;
 using Robust.Shared.Player;
-using Robust.Shared.Players;
 using Robust.Shared.Random;
-using Robust.Shared.Threading;
 using Robust.Shared.Timing;
 using Robust.Shared.Utility;
+using Content.Shared.Prying.Systems;
+using Microsoft.Extensions.ObjectPool;
+using Robust.Shared.Threading;
 
 namespace Content.Server.NPC.Systems;
 
@@ -48,13 +48,13 @@ public sealed partial class NPCSteeringSystem : SharedNPCSteeringSystem
     [Dependency] private readonly IConfigurationManager _configManager = default!;
     [Dependency] private readonly IGameTiming _timing = default!;
     [Dependency] private readonly IMapManager _mapManager = default!;
-    [Dependency] private readonly IParallelManager _parallel = default!;
     [Dependency] private readonly IRobustRandom _random = default!;
+    [Dependency] private readonly ClimbSystem _climb = default!;
     [Dependency] private readonly DoAfterSystem _doAfter = default!;
-    [Dependency] private readonly DoorSystem _doors = default!;
     [Dependency] private readonly EntityLookupSystem _lookup = default!;
-    [Dependency] private readonly FactionSystem _faction = default!;
+    [Dependency] private readonly NpcFactionSystem _npcFaction = default!;
     [Dependency] private readonly PathfindingSystem _pathfindingSystem = default!;
+    [Dependency] private readonly PryingSystem _pryingSystem = default!;
     [Dependency] private readonly SharedInteractionSystem _interaction = default!;
     [Dependency] private readonly SharedMeleeWeaponSystem _melee = default!;
     [Dependency] private readonly SharedMoverController _mover = default!;
@@ -63,9 +63,13 @@ public sealed partial class NPCSteeringSystem : SharedNPCSteeringSystem
     [Dependency] private readonly SharedCombatModeSystem _combat = default!;
 
     private EntityQuery<FixturesComponent> _fixturesQuery;
-    private EntityQuery<PhysicsComponent> _physicsQuery;
     private EntityQuery<MovementSpeedModifierComponent> _modifierQuery;
+    private EntityQuery<NpcFactionMemberComponent> _factionQuery;
+    private EntityQuery<PhysicsComponent> _physicsQuery;
     private EntityQuery<TransformComponent> _xformQuery;
+
+    private ObjectPool<HashSet<EntityUid>> _entSetPool =
+        new DefaultObjectPool<HashSet<EntityUid>>(new SetPolicy<EntityUid>());
 
     /// <summary>
     /// Enabled antistuck detection so if an NPC is in the same spot for a while it will re-path.
@@ -86,16 +90,12 @@ public sealed partial class NPCSteeringSystem : SharedNPCSteeringSystem
     {
         base.Initialize();
 
+        Log.Level = LogLevel.Info;
         _fixturesQuery = GetEntityQuery<FixturesComponent>();
-        _physicsQuery = GetEntityQuery<PhysicsComponent>();
         _modifierQuery = GetEntityQuery<MovementSpeedModifierComponent>();
+        _factionQuery = GetEntityQuery<NpcFactionMemberComponent>();
+        _physicsQuery = GetEntityQuery<PhysicsComponent>();
         _xformQuery = GetEntityQuery<TransformComponent>();
-
-#if DEBUG
-        Log.Level = LogLevel.Warning;
-#else
-        Log.Level = LogLevel.Debug;
-#endif
 
         for (var i = 0; i < InterestDirections; i++)
         {
@@ -103,8 +103,8 @@ public sealed partial class NPCSteeringSystem : SharedNPCSteeringSystem
         }
 
         UpdatesBefore.Add(typeof(SharedPhysicsSystem));
-        _configManager.OnValueChanged(CCVars.NPCEnabled, SetNPCEnabled, true);
-        _configManager.OnValueChanged(CCVars.NPCPathfinding, SetNPCPathfinding, true);
+        Subs.CVar(_configManager, CCVars.NPCEnabled, SetNPCEnabled, true);
+        Subs.CVar(_configManager, CCVars.NPCPathfinding, SetNPCPathfinding, true);
 
         SubscribeLocalEvent<NPCSteeringComponent, ComponentShutdown>(OnSteeringShutdown);
         SubscribeLocalEvent<NPCSteeringComponent, EntityUnpausedEvent>(OnSteeringUnpaused);
@@ -140,16 +140,9 @@ public sealed partial class NPCSteeringSystem : SharedNPCSteeringSystem
         }
     }
 
-    public override void Shutdown()
-    {
-        base.Shutdown();
-        _configManager.UnsubValueChanged(CCVars.NPCEnabled, SetNPCEnabled);
-        _configManager.UnsubValueChanged(CCVars.NPCPathfinding, SetNPCPathfinding);
-    }
-
     private void OnDebugRequest(RequestNPCSteeringDebugEvent msg, EntitySessionEventArgs args)
     {
-        if (!_admin.IsAdmin((IPlayerSession) args.SenderSession))
+        if (!_admin.IsAdmin(args.SenderSession))
             return;
 
         if (msg.Enabled)
@@ -236,8 +229,16 @@ public sealed partial class NPCSteeringSystem : SharedNPCSteeringSystem
             return;
 
         // Not every mob has the modifier component so do it as a separate query.
-        var npcs = EntityQuery<ActiveNPCComponent, NPCSteeringComponent, InputMoverComponent, TransformComponent>()
-            .Select(o => (o.Item1.Owner, o.Item2, o.Item3, o.Item4)).ToArray();
+        var npcs = new (EntityUid, NPCSteeringComponent, InputMoverComponent, TransformComponent)[Count<ActiveNPCComponent>()];
+
+        var query = EntityQueryEnumerator<ActiveNPCComponent, NPCSteeringComponent, InputMoverComponent, TransformComponent>();
+        var index = 0;
+
+        while (query.MoveNext(out var uid, out _, out var steering, out var mover, out var xform))
+        {
+            npcs[index] = (uid, steering, mover, xform);
+            index++;
+        }
 
         // Dependency issues across threads.
         var options = new ParallelOptions
@@ -246,7 +247,7 @@ public sealed partial class NPCSteeringSystem : SharedNPCSteeringSystem
         };
         var curTime = _timing.CurTime;
 
-        Parallel.For(0, npcs.Length, options, i =>
+        Parallel.For(0, index, options, i =>
         {
             var (uid, steering, mover, xform) = npcs[i];
             Steer(uid, steering, mover, xform, frameTime, curTime);
@@ -255,12 +256,14 @@ public sealed partial class NPCSteeringSystem : SharedNPCSteeringSystem
 
         if (_subscribedSessions.Count > 0)
         {
-            var data = new List<NPCSteeringDebugData>(npcs.Length);
+            var data = new List<NPCSteeringDebugData>(index);
 
-            foreach (var (uid, steering, mover, _) in npcs)
+            for (var i = 0; i < index; i++)
             {
+                var (uid, steering, mover, _) = npcs[i];
+
                 data.Add(new NPCSteeringDebugData(
-                    uid,
+                    GetNetEntity(uid),
                     mover.CurTickSprintMovement,
                     steering.Interest,
                     steering.Danger,
@@ -339,7 +342,9 @@ public sealed partial class NPCSteeringSystem : SharedNPCSteeringSystem
             steering.Danger[i] = 0f;
         }
 
-        var ev = new NPCSteeringEvent(steering, interest, danger, agentRadius, offsetRot, worldPos);
+        steering.CanSeek = true;
+
+        var ev = new NPCSteeringEvent(steering, xform, worldPos, offsetRot);
         RaiseLocalEvent(uid, ref ev);
         // If seek has arrived at the target node for example then immediately re-steer.
         var forceSteer = true;
@@ -429,7 +434,7 @@ public sealed partial class NPCSteeringSystem : SharedNPCSteeringSystem
         if (targetPoly != null &&
             steering.Coordinates.Position.Equals(Vector2.Zero) &&
             TryComp<PhysicsComponent>(uid, out var physics) &&
-            _interaction.InRangeUnobstructed(uid, steering.Coordinates.EntityId, range: 30f, (CollisionGroup) physics.CollisionMask))
+            _interaction.InRangeUnobstructed(uid, steering.Coordinates.EntityId, range: 30f, (CollisionGroup)physics.CollisionMask))
         {
             steering.CurrentPath.Clear();
             steering.CurrentPath.Enqueue(targetPoly);

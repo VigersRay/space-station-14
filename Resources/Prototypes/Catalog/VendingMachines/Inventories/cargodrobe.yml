@@ -1,6 +1,9 @@
 - type: vendingMachineInventory
   id: CargoDrobeInventory
   startingInventory:
+    ClothingBackpackCargo: 3
+    ClothingBackpackSatchelCargo: 3
+    ClothingBackpackDuffelCargo: 3
     ClothingUniformJumpsuitCargo: 3
     ClothingUniformJumpskirtCargo: 3
     ClothingShoesColorBlack: 3
@@ -11,3 +14,4 @@
     ClothingOuterWinterCargo: 2
     ClothingOuterWinterMiner: 2
     ClothingNeckScarfStripedBrown: 3
+    ClothingShoesBootsWinterCargo: 2

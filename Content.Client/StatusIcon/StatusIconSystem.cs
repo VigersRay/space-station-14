@@ -1,4 +1,4 @@
-﻿using Content.Shared.CCVar;
+using Content.Shared.CCVar;
 using Content.Shared.StatusIcon;
 using Content.Shared.StatusIcon.Components;
 using Robust.Client.Graphics;
@@ -20,16 +20,8 @@ public sealed class StatusIconSystem : SharedStatusIconSystem
     /// <inheritdoc/>
     public override void Initialize()
     {
-        _configuration.OnValueChanged(CCVars.LocalStatusIconsEnabled, OnLocalStatusIconChanged, true);
-        _configuration.OnValueChanged(CCVars.GlobalStatusIconsEnabled, OnGlobalStatusIconChanged, true);
-    }
-
-    public override void Shutdown()
-    {
-        base.Shutdown();
-
-        _configuration.UnsubValueChanged(CCVars.LocalStatusIconsEnabled, OnLocalStatusIconChanged);
-        _configuration.UnsubValueChanged(CCVars.GlobalStatusIconsEnabled, OnGlobalStatusIconChanged);
+        Subs.CVar(_configuration, CCVars.LocalStatusIconsEnabled, OnLocalStatusIconChanged, true);
+        Subs.CVar(_configuration, CCVars.GlobalStatusIconsEnabled, OnGlobalStatusIconChanged, true);
     }
 
     private void OnLocalStatusIconChanged(bool obj)
@@ -53,12 +45,17 @@ public sealed class StatusIconSystem : SharedStatusIconSystem
             _overlay.AddOverlay(new StatusIconOverlay());
     }
 
-    public List<StatusIconData> GetStatusIcons(EntityUid uid)
+    public List<StatusIconData> GetStatusIcons(EntityUid uid, MetaDataComponent? meta = null)
     {
-        if (!Exists(uid) || Terminating(uid))
-            return new();
+        var list = new List<StatusIconData>();
+        if (!Resolve(uid, ref meta))
+            return list;
 
-        var ev = new GetStatusIconsEvent(new());
+        if (meta.EntityLifeStage >= EntityLifeStage.Terminating)
+            return list;
+
+        var inContainer = (meta.Flags & MetaDataFlags.InContainer) != 0;
+        var ev = new GetStatusIconsEvent(list, inContainer);
         RaiseLocalEvent(uid, ref ev);
         return ev.StatusIcons;
     }

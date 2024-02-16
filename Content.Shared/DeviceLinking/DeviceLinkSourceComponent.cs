@@ -1,35 +1,42 @@
-﻿using Robust.Shared.GameStates;
-using Robust.Shared.Serialization.TypeSerializers.Implementations.Custom.Prototype.Set;
+using Robust.Shared.GameStates;
+using Robust.Shared.Prototypes;
 
 namespace Content.Shared.DeviceLinking;
 
 [RegisterComponent]
 [NetworkedComponent] // for interactions. Actual state isn't currently synced.
 [Access(typeof(SharedDeviceLinkSystem))]
-public sealed class DeviceLinkSourceComponent : Component
+public sealed partial class DeviceLinkSourceComponent : Component
 {
     /// <summary>
     /// The ports the device link source sends signals from
     /// </summary>
-    [DataField("ports", customTypeSerializer: typeof(PrototypeIdHashSetSerializer<SourcePortPrototype>))]
-    public HashSet<string>? Ports;
+    [DataField]
+    public HashSet<ProtoId<SourcePortPrototype>>? Ports;
 
     /// <summary>
     /// A list of sink uids that got linked for each port
     /// </summary>
-    [DataField("registeredSinks")]
-    public Dictionary<string, HashSet<EntityUid>> Outputs = new();
+    [ViewVariables]
+    public Dictionary<ProtoId<SourcePortPrototype>, HashSet<EntityUid>> Outputs = new();
+
+    /// <summary>
+    /// If set to High or Low, the last signal state for a given port.
+    /// Used when linking ports of devices that are currently outputting a signal.
+    /// Only set by <c>DeviceLinkSystem.SendSignal</c>.
+    /// </summary>
+    [DataField]
+    public Dictionary<ProtoId<SourcePortPrototype>, bool> LastSignals = new();
 
     /// <summary>
     /// The list of source to sink ports for each linked sink entity for easier managing of links
     /// </summary>
-    [DataField("linkedPorts")]
-    public Dictionary<EntityUid, HashSet<(string source, string sink)>> LinkedPorts = new();
+    [DataField]
+    public Dictionary<EntityUid, HashSet<(ProtoId<SourcePortPrototype> source, ProtoId<SinkPortPrototype> sink)>> LinkedPorts = new();
 
     /// <summary>
     ///     Limits the range devices can be linked across.
     /// </summary>
-    [DataField("range")]
-    [ViewVariables(VVAccess.ReadWrite)]
+    [DataField]
     public float Range = 30f;
 }

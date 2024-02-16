@@ -11,7 +11,9 @@ using Content.Shared.Physics;
 using Content.Shared.Popups;
 using Content.Shared.RCD.Components;
 using Content.Shared.Tag;
+using Content.Shared.Tiles;
 using Robust.Shared.Audio;
+using Robust.Shared.Audio.Systems;
 using Robust.Shared.Map;
 using Robust.Shared.Map.Components;
 using Robust.Shared.Network;
@@ -22,18 +24,20 @@ namespace Content.Shared.RCD.Systems;
 
 public sealed class RCDSystem : EntitySystem
 {
+    [Dependency] private readonly IGameTiming _timing = default!;
+    [Dependency] private readonly IMapManager _mapMan = default!;
+    [Dependency] private readonly INetManager _net = default!;
     [Dependency] private readonly ISharedAdminLogManager _adminLogger = default!;
+    [Dependency] private readonly ITileDefinitionManager _tileDefMan = default!;
+    [Dependency] private readonly FloorTileSystem _floors = default!;
     [Dependency] private readonly SharedAudioSystem _audio = default!;
     [Dependency] private readonly SharedChargesSystem _charges = default!;
     [Dependency] private readonly SharedDoAfterSystem _doAfter = default!;
     [Dependency] private readonly SharedInteractionSystem _interaction = default!;
-    [Dependency] private readonly IMapManager _mapMan = default!;
-    [Dependency] private readonly INetManager _net = default!;
     [Dependency] private readonly SharedPopupSystem _popup = default!;
     [Dependency] private readonly TagSystem _tag = default!;
-    [Dependency] private readonly ITileDefinitionManager _tileDefMan = default!;
-    [Dependency] private readonly IGameTiming _timing = default!;
     [Dependency] private readonly TurfSystem _turf = default!;
+    [Dependency] private readonly IGameTiming _gameTiming = default!;
 
     private readonly int RcdModeCount = Enum.GetValues(typeof(RcdMode)).Length;
 
@@ -95,7 +99,7 @@ public sealed class RCDSystem : EntitySystem
                 return;
         }
 
-        var doAfterArgs = new DoAfterArgs(user, comp.Delay, new RCDDoAfterEvent(location, comp.Mode), uid, target: args.Target, used: uid)
+        var doAfterArgs = new DoAfterArgs(EntityManager, user, comp.Delay, new RCDDoAfterEvent(GetNetCoordinates(location), comp.Mode), uid, target: args.Target, used: uid)
         {
             BreakOnDamage = true,
             NeedHand = true,
@@ -106,7 +110,9 @@ public sealed class RCDSystem : EntitySystem
         };
 
         args.Handled = true;
-        _doAfter.TryStartDoAfter(doAfterArgs);
+
+        if (_doAfter.TryStartDoAfter(doAfterArgs) && _gameTiming.IsFirstTimePredicted)
+            Spawn("EffectRCDConstruction", location);
     }
 
     private void OnDoAfterAttempt(EntityUid uid, RCDComponent comp, DoAfterAttemptEvent<RCDDoAfterEvent> args)
@@ -115,7 +121,7 @@ public sealed class RCDSystem : EntitySystem
         if (args.Event?.DoAfter?.Args == null)
             return;
 
-        var location = args.Event.Location;
+        var location = GetCoordinates(args.Event.Location);
 
         var gridId = location.GetGridUid(EntityManager);
         if (!HasComp<MapGridComponent>(gridId))
@@ -140,7 +146,7 @@ public sealed class RCDSystem : EntitySystem
             return;
 
         var user = args.User;
-        var location = args.Location;
+        var location = GetCoordinates(args.Location);
 
         var gridId = location.GetGridUid(EntityManager);
         if (!HasComp<MapGridComponent>(gridId))
@@ -156,10 +162,17 @@ public sealed class RCDSystem : EntitySystem
         var tile = mapGrid.GetTileRef(location);
         var snapPos = mapGrid.TileIndicesFor(location);
 
+        // I love that this uses entirely separate code to construction and tile placement!!!
+
         switch (comp.Mode)
         {
             //Floor mode just needs the tile to be a space tile (subFloor)
             case RcdMode.Floors:
+                if (!_floors.CanPlaceTile(gridId.Value, mapGrid, out var reason))
+                {
+                    _popup.PopupClient(reason, user, user);
+                    return;
+                }
 
                 mapGrid.SetTile(snapPos, new Tile(_tileDefMan[comp.Floor].TileId));
                 _adminLogger.Add(LogType.RCD, LogImpact.High, $"{ToPrettyString(args.User):user} used RCD to set grid: {tile.GridUid} {snapPos} to {comp.Floor}");
@@ -237,14 +250,25 @@ public sealed class RCDSystem : EntitySystem
                 if (tile.Tile.IsEmpty)
                     return false;
 
-                //They tried to decon a turf but the turf is blocked
-                if (target == null && IsTileBlocked(tile))
+                //They tried to decon a turf but...
+                if (target == null)
                 {
-                    _popup.PopupClient(Loc.GetString("rcd-component-tile-obstructed-message"), uid, user);
-                    return false;
+                    // the turf is blocked
+                    if (IsTileBlocked(tile))
+                    {
+                        _popup.PopupClient(Loc.GetString("rcd-component-tile-obstructed-message"), uid, user);
+                        return false;
+                    }
+                    // the turf can't be destroyed (planet probably)
+                    var tileDef = (ContentTileDefinition) _tileDefMan[tile.Tile.TypeId];
+                    if (tileDef.Indestructible)
+                    {
+                        _popup.PopupClient(Loc.GetString("rcd-component-tile-indestructible-message"), uid, user);
+                        return false;
+                    }
                 }
                 //They tried to decon a non-turf but it's not in the whitelist
-                if (target != null && !_tag.HasTag(target.Value, "RCDDeconstructWhitelist"))
+                else if (!_tag.HasTag(target.Value, "RCDDeconstructWhitelist"))
                 {
                     _popup.PopupClient(Loc.GetString("rcd-component-deconstruct-target-not-on-whitelist-message"), uid, user);
                     return false;
@@ -302,19 +326,19 @@ public sealed class RCDSystem : EntitySystem
 }
 
 [Serializable, NetSerializable]
-public sealed class RCDDoAfterEvent : DoAfterEvent
+public sealed partial class RCDDoAfterEvent : DoAfterEvent
 {
     [DataField("location", required: true)]
-    public readonly EntityCoordinates Location = default!;
+    public NetCoordinates Location = default!;
 
     [DataField("startingMode", required: true)]
-    public readonly RcdMode StartingMode = default!;
+    public RcdMode StartingMode = default!;
 
     private RCDDoAfterEvent()
     {
     }
 
-    public RCDDoAfterEvent(EntityCoordinates location, RcdMode startingMode)
+    public RCDDoAfterEvent(NetCoordinates location, RcdMode startingMode)
     {
         Location = location;
         StartingMode = startingMode;

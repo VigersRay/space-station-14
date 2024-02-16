@@ -6,16 +6,12 @@ using Content.Shared.Movement.Systems;
 using Content.Shared.Pulling.Components;
 using JetBrains.Annotations;
 using Robust.Shared.Configuration;
-using Robust.Shared.GameStates;
 using Robust.Shared.Map;
 using Robust.Shared.Map.Components;
 using Robust.Shared.Physics.Components;
 using Robust.Shared.Physics.Controllers;
 using Robust.Shared.Physics.Dynamics;
 using Robust.Shared.Physics.Systems;
-using Robust.Shared.Serialization;
-using Robust.Shared.Utility;
-
 
 namespace Content.Shared.Friction
 {
@@ -35,20 +31,8 @@ namespace Content.Shared.Friction
         {
             base.Initialize();
 
-            _configManager.OnValueChanged(CCVars.TileFrictionModifier, SetFrictionModifier, true);
-            _configManager.OnValueChanged(CCVars.StopSpeed, SetStopSpeed, true);
-        }
-
-        private void SetStopSpeed(float value) => _stopSpeed = value;
-
-        private void SetFrictionModifier(float value) => _frictionModifier = value;
-
-        public override void Shutdown()
-        {
-            base.Shutdown();
-
-            _configManager.UnsubValueChanged(CCVars.TileFrictionModifier, SetFrictionModifier);
-            _configManager.UnsubValueChanged(CCVars.StopSpeed, SetStopSpeed);
+            Subs.CVar(_configManager, CCVars.TileFrictionModifier, value => _frictionModifier = value, true);
+            Subs.CVar(_configManager, CCVars.StopSpeed, value => _stopSpeed = value, true);
         }
 
         public override void UpdateBeforeMapSolve(bool prediction, PhysicsMapComponent mapComponent, float frameTime)
@@ -68,7 +52,7 @@ namespace Content.Shared.Friction
                 // Only apply friction when it's not a mob (or the mob doesn't have control)
                 if (prediction && !body.Predict ||
                     body.BodyStatus == BodyStatus.InAir ||
-                    _mover.UseMobMovement(body.Owner))
+                    _mover.UseMobMovement(uid))
                 {
                     continue;
                 }
@@ -78,7 +62,7 @@ namespace Content.Shared.Friction
 
                 if (!xformQuery.TryGetComponent(uid, out var xform))
                 {
-                    Log.Error($"Unable to get transform for {ToPrettyString(body.Owner)} in tilefrictioncontroller");
+                    Log.Error($"Unable to get transform for {ToPrettyString(uid)} in tilefrictioncontroller");
                     continue;
                 }
 

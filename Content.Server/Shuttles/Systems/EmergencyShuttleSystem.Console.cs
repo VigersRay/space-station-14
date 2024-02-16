@@ -1,17 +1,18 @@
 using System.Threading;
+using Content.Server.DeviceNetwork;
+using Content.Server.DeviceNetwork.Components;
+using Content.Server.Screens.Components;
 using Content.Server.Shuttles.Components;
 using Content.Server.Shuttles.Events;
-using Content.Server.Station.Components;
-using Content.Server.UserInterface;
+using Content.Shared.UserInterface;
+using Content.Shared.Access;
 using Content.Shared.CCVar;
 using Content.Shared.Database;
-using Content.Shared.GameTicking;
+using Content.Shared.DeviceNetwork;
 using Content.Shared.Popups;
 using Content.Shared.Shuttles.BUIStates;
 using Content.Shared.Shuttles.Events;
 using Content.Shared.Shuttles.Systems;
-using Robust.Server.GameObjects;
-using Robust.Shared.Audio;
 using Robust.Shared.Map;
 using Robust.Shared.Player;
 using Timer = Robust.Shared.Timing.Timer;
@@ -63,6 +64,7 @@ public sealed partial class EmergencyShuttleSystem
 
     private CancellationTokenSource? _roundEndCancelToken;
 
+    [ValidatePrototypeId<AccessLevelPrototype>]
     private const string EmergencyRepealAllAccess = "EmergencyShuttleRepealAll";
     private static readonly Color DangerColor = Color.Red;
 
@@ -83,9 +85,9 @@ public sealed partial class EmergencyShuttleSystem
 
     private void InitializeEmergencyConsole()
     {
-        _configManager.OnValueChanged(CCVars.EmergencyShuttleMinTransitTime, SetMinTransitTime, true);
-        _configManager.OnValueChanged(CCVars.EmergencyShuttleMaxTransitTime, SetMaxTransitTime, true);
-        _configManager.OnValueChanged(CCVars.EmergencyShuttleAuthorizeTime, SetAuthorizeTime, true);
+        Subs.CVar(_configManager, CCVars.EmergencyShuttleMinTransitTime, SetMinTransitTime, true);
+        Subs.CVar(_configManager, CCVars.EmergencyShuttleMaxTransitTime, SetMaxTransitTime, true);
+        Subs.CVar(_configManager, CCVars.EmergencyShuttleAuthorizeTime, SetAuthorizeTime, true);
         SubscribeLocalEvent<EmergencyShuttleConsoleComponent, ComponentStartup>(OnEmergencyStartup);
         SubscribeLocalEvent<EmergencyShuttleConsoleComponent, EmergencyShuttleAuthorizeMessage>(OnEmergencyAuthorize);
         SubscribeLocalEvent<EmergencyShuttleConsoleComponent, EmergencyShuttleRepealMessage>(OnEmergencyRepeal);
@@ -119,13 +121,6 @@ public sealed partial class EmergencyShuttleSystem
     private void SetMaxTransitTime(float obj)
     {
         MaximumTransitTime = Math.Max(MinimumTransitTime, obj);
-    }
-
-    private void ShutdownEmergencyConsole()
-    {
-        _configManager.UnsubValueChanged(CCVars.EmergencyShuttleAuthorizeTime, SetAuthorizeTime);
-        _configManager.UnsubValueChanged(CCVars.EmergencyShuttleMinTransitTime, SetMinTransitTime);
-        _configManager.UnsubValueChanged(CCVars.EmergencyShuttleMaxTransitTime, SetMaxTransitTime);
     }
 
     private void OnEmergencyStartup(EntityUid uid, EmergencyShuttleConsoleComponent component, ComponentStartup args)
@@ -168,18 +163,19 @@ public sealed partial class EmergencyShuttleSystem
                     continue;
                 }
 
-                if (Deleted(centcomm.Entity))
+                if (!Deleted(centcomm.Entity))
+                {
+                    _shuttle.FTLTravel(comp.EmergencyShuttle.Value, shuttle,
+                        centcomm.Entity.Value, _consoleAccumulator, TransitTime, true);
+                    continue;
+                }
+
+                if (!Deleted(centcomm.MapEntity))
                 {
                     // TODO: Need to get non-overlapping positions.
                     _shuttle.FTLTravel(comp.EmergencyShuttle.Value, shuttle,
-                        new EntityCoordinates(
-                            _mapManager.GetMapEntityId(centcomm.MapId),
+                        new EntityCoordinates(centcomm.MapEntity.Value,
                             _random.NextVector2(1000f)), _consoleAccumulator, TransitTime);
-                }
-                else
-                {
-                    _shuttle.FTLTravel(comp.EmergencyShuttle.Value, shuttle,
-                        centcomm.Entity, _consoleAccumulator, TransitTime, true);
                 }
             }
 
@@ -207,7 +203,7 @@ public sealed partial class EmergencyShuttleSystem
             }
 
             // Don't dock them. If you do end up doing this then stagger launch.
-            _shuttle.FTLTravel(uid, shuttle, centcomm.Entity, hyperspaceTime: TransitTime);
+            _shuttle.FTLTravel(uid, shuttle, centcomm.Entity.Value, hyperspaceTime: TransitTime);
             RemCompDeferred<EscapePodComponent>(uid);
         }
 
@@ -231,7 +227,7 @@ public sealed partial class EmergencyShuttleSystem
                 if (Deleted(comp.Entity))
                     continue;
 
-                _shuttle.AddFTLDestination(comp.Entity, true);
+                _shuttle.AddFTLDestination(comp.Entity.Value, true);
             }
         }
     }
@@ -259,16 +255,17 @@ public sealed partial class EmergencyShuttleSystem
     private void OnEmergencyRepeal(EntityUid uid, EmergencyShuttleConsoleComponent component, EmergencyShuttleRepealMessage args)
     {
         var player = args.Session.AttachedEntity;
-        if (player == null) return;
+        if (player == null)
+            return;
 
-        if (!_idSystem.TryFindIdCard(player.Value, out var idCard) || !_reader.IsAllowed(idCard.Owner, uid))
+        if (!_idSystem.TryFindIdCard(player.Value, out var idCard) || !_reader.IsAllowed(idCard, uid))
         {
             _popup.PopupCursor(Loc.GetString("emergency-shuttle-console-denied"), player.Value, PopupType.Medium);
             return;
         }
 
         // TODO: This is fucking bad
-        if (!component.AuthorizedEntities.Remove(MetaData(idCard.Owner).EntityName))
+        if (!component.AuthorizedEntities.Remove(MetaData(idCard).EntityName))
             return;
 
         _logger.Add(LogType.EmergencyShuttle, LogImpact.High, $"Emergency shuttle early launch REPEAL by {args.Session:user}");
@@ -284,14 +281,14 @@ public sealed partial class EmergencyShuttleSystem
         if (player == null)
             return;
 
-        if (!_idSystem.TryFindIdCard(player.Value, out var idCard) || !_reader.IsAllowed(idCard.Owner, uid))
+        if (!_idSystem.TryFindIdCard(player.Value, out var idCard) || !_reader.IsAllowed(idCard, uid))
         {
             _popup.PopupCursor(Loc.GetString("emergency-shuttle-console-denied"), args.Session, PopupType.Medium);
             return;
         }
 
         // TODO: This is fucking bad
-        if (!component.AuthorizedEntities.Add(MetaData(idCard.Owner).EntityName))
+        if (!component.AuthorizedEntities.Add(MetaData(idCard).EntityName))
             return;
 
         _logger.Add(LogType.EmergencyShuttle, LogImpact.High, $"Emergency shuttle early launch AUTH by {args.Session:user}");
@@ -341,7 +338,7 @@ public sealed partial class EmergencyShuttleSystem
         }
 
         if (_uiSystem.TryGetUi(uid, EmergencyConsoleUiKey.Key, out var bui))
-            UserInterfaceSystem.SetUiState(
+            _uiSystem.SetUiState(
                 bui,
                 new EmergencyConsoleBoundUserInterfaceState()
                 {
@@ -374,6 +371,24 @@ public sealed partial class EmergencyShuttleSystem
         RaiseLocalEvent(new EmergencyShuttleAuthorizedEvent());
         AnnounceLaunch();
         UpdateAllEmergencyConsoles();
+
+        var time = TimeSpan.FromSeconds(_authorizeTime);
+        var shuttle = GetShuttle();
+        if (shuttle != null && TryComp<DeviceNetworkComponent>(shuttle, out var net))
+        {
+            var payload = new NetworkPayload
+            {
+                [ShuttleTimerMasks.ShuttleMap] = shuttle,
+                [ShuttleTimerMasks.SourceMap] = _roundEnd.GetStation(),
+                [ShuttleTimerMasks.DestMap] = _roundEnd.GetCentcomm(),
+                [ShuttleTimerMasks.ShuttleTime] = time,
+                [ShuttleTimerMasks.SourceTime] = time,
+                [ShuttleTimerMasks.DestTime] = time + TimeSpan.FromSeconds(TransitTime),
+                [ShuttleTimerMasks.Docked] = true
+            };
+            _deviceNetworkSystem.QueuePacket(shuttle.Value, null, payload, net.TransmitFrequency);
+        }
+
         return true;
     }
 

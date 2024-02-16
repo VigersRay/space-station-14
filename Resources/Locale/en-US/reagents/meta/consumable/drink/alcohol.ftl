@@ -55,6 +55,9 @@ reagent-desc-whiskey = A type of distilled alcoholic beverage made from fermente
 reagent-name-wine = wine
 reagent-desc-wine = An premium alchoholic beverage made from distilled grape juice.
 
+reagent-name-champagne = champagne
+reagent-desc-champagne = A premium sparkling wine
+
 reagent-name-acid-spit = acidspit
 reagent-desc-acid-spit = A drink for the daring, can be deadly if incorrectly prepared!
 
@@ -130,8 +133,8 @@ reagent-desc-gin-fizz = Refreshingly lemony, deliciously dry.
 reagent-name-gin-tonic = gin and tonic
 reagent-desc-gin-tonic = An all time classic, mild cocktail.
 
-reagent-name-goldschlager = Goldschlager
-reagent-desc-goldschlager = 100 proof cinnamon schnapps, made for alcoholic teen girls on spring break.
+reagent-name-gildlager = gildlager
+reagent-desc-gildlager = 100 proof cinnamon schnapps, made for alcoholic teen girls on spring break.
 
 reagent-name-grog = grog
 reagent-desc-grog = Watered-down rum, pirate approved!
@@ -230,7 +233,7 @@ reagent-name-toxins-special = toxins special
 reagent-desc-toxins-special = This thing is ON FIRE! CALL THE DAMN SHUTTLE!
 
 reagent-name-vodka-martini = vodka martini
-reagent-desc-vodka-martini = Vodka with Gin. Not quite how 007 enjoyed it, but still delicious.
+reagent-desc-vodka-martini = Vodka instead of Gin. Not quite how 007 enjoyed it, but still delicious.
 
 reagent-name-vodka-tonic = vodka tonic
 reagent-desc-vodka-tonic = For when a gin and tonic isn't russian enough.

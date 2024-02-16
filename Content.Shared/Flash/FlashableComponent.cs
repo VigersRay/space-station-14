@@ -1,13 +1,17 @@
+using Content.Shared.Physics;
 using Robust.Shared.GameStates;
 using Robust.Shared.Serialization;
 
 namespace Content.Shared.Flash
 {
     [RegisterComponent, NetworkedComponent]
-    public sealed class FlashableComponent : Component
+    public sealed partial class FlashableComponent : Component
     {
         public float Duration;
         public TimeSpan LastFlash;
+
+        [DataField]
+        public CollisionGroup CollisionGroup = CollisionGroup.Opaque;
 
         public override bool SendOnlyToOwner => true;
     }

@@ -3,8 +3,8 @@ using Content.Server.Cargo.Components;
 using Content.Server.Cargo.Systems;
 using Content.Server.GameTicking;
 using Content.Server.GameTicking.Rules.Components;
+using Content.Server.Station.Components;
 using Content.Server.StationEvents.Components;
-using Content.Shared.Cargo.Prototypes;
 using Robust.Shared.Prototypes;
 
 namespace Content.Server.StationEvents.Events;
@@ -30,18 +30,18 @@ public sealed class CargoGiftsRule : StationEventSystem<CargoGiftsRuleComponent>
     protected override void ActiveTick(EntityUid uid, CargoGiftsRuleComponent component, GameRuleComponent gameRule, float frameTime)
     {
         if (component.Gifts.Count == 0)
-        {
             return;
-        }
 
         if (component.TimeUntilNextGifts > 0)
         {
             component.TimeUntilNextGifts -= frameTime;
             return;
         }
-        component.TimeUntilNextGifts = 30f;
 
-        if (!TryGetRandomStation(out var station, HasComp<StationCargoOrderDatabaseComponent>))
+        component.TimeUntilNextGifts += 30f;
+
+        if (!TryGetRandomStation(out var station, HasComp<StationCargoOrderDatabaseComponent>) ||
+                !TryComp<StationDataComponent>(station, out var stationData))
             return;
 
         if (!TryComp<StationCargoOrderDatabaseComponent>(station, out var cargoDb))
@@ -57,17 +57,18 @@ public sealed class CargoGiftsRule : StationEventSystem<CargoGiftsRuleComponent>
             var (productId, qty) = component.Gifts.First();
             component.Gifts.Remove(productId);
 
-            var product = _prototypeManager.Index<CargoProductPrototype>(productId);
+            var product = _prototypeManager.Index(productId);
 
             if (!_cargoSystem.AddAndApproveOrder(
                     station!.Value,
                     product.Product,
-                    product.PointCost,
+                    product.Cost,
                     qty,
                     Loc.GetString(component.Sender),
                     Loc.GetString(component.Description),
                     Loc.GetString(component.Dest),
-                    cargoDb
+                    cargoDb,
+                    stationData!
             ))
             {
                 break;
